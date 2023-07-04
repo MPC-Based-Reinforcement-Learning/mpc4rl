@@ -1,0 +1,71 @@
+environment:
+  name: pendulum
+  M: 1. # mass of the cart [kg]
+  m: 0.1 # mass of the ball [kg]
+  g: 9.81 # gravity constant [m/s^2]
+  l: 0.8 # length of the rod [m]
+
+simulation:
+  # x0: [0., 2.97, 0., 0.] # initial state [x, theta, x_dot, theta_dot]
+  x0: [0., 3.14, 0., 0.] # initial state [x, theta, x_dot, theta_dot]
+  t0: 0.0 # initial time [s]
+  dt: 0.01 # time step [s]
+  T: 3. # simulation time [s]
+
+acados_settings:
+  installation_directory: /usr/local
+
+agent:
+  function_approximator: 
+    name: pendulum_mpc
+    param:
+      model:
+        M:
+          value: 1. # mass of the cart [kg]
+          fixed: true
+        m:
+          value: 0.1 # mass of the ball [kg]
+          fixed: true
+        g:
+          value: 9.81 # gravity constant [m/s^2]
+          fixed: true
+        l:
+          value: 0.8 # length of the rod [m]
+          fixed: true
+      cost:
+        Q:
+          value: [
+            [1e2, 0, 0, 0],
+            [0, 1e2, 0, 0],
+            [0, -1, 1e-1, 0],
+            [0, 0, 0, 1e-1]
+            ] # state cost
+          fixed: true
+        R:
+          value: [0.01] # control cost
+          fixed: true
+      dims:
+        N: 30 # number of control intervals
+        nx: 4 # number of states
+        nu: 1 # number of controls
+        ny: 5 # number of outputs
+      constraints:
+        lh: [-1., -30.0] # lower state bound
+        lbx: [-1.0, -3.14, -inf, -inf] # lower state bound
+        ubx: [1.0,  3.14, inf, inf] # upper state bound
+        lbu: [-30.] # lower control bound
+        ubu: [30.] # upper control bound
+      solver_options:
+        qp_solver: PARTIAL_CONDENSING_HPIPM
+        hessian_approx: GAUSS_NEWTON
+        integrator_type: ERK
+        nlp_solver_type: SQP_RTI
+        nlp_solver_max_iter: 200
+        tf: 3.
+      initial_values:
+        yref: [0., 0., 0., 0., 0.] # reference output
+        x0: [0., 3.14, 0., 0.] # initial state
+        u0: [0.] # initial control
+
+
+
