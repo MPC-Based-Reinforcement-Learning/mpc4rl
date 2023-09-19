@@ -4,3 +4,6 @@
 [submodule "external/gymnasium"]
 	path = external/gymnasium
 	url = https://github.com/Farama-Foundation/Gymnasium
+[submodule "external/stable_baselines3"]
+	path = external/stable_baselines3
+	url = https://github.com/DLR-RM/stable-baselines3.git
