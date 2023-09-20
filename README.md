@@ -3,10 +3,14 @@
 
 ## Installation
 
-Set up acados as a submodule and install
+The repository depends on the following submodules
+- [acados](https://docs.acados.org/index.html) for generating MPC solvers
+- [stable baselines 3](https://stable-baselines3.readthedocs.io/en/master/) for implementations of RL algorithms
+- [gymnasium](https://gymnasium.farama.org/) for reference environments.
 
-```
-    TODO
+Initialize submodules via running
+``` bash
+git submodule update --recursive --init
 ```
 
 Create python virtual environment
