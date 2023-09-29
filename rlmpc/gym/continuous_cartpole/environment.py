@@ -189,9 +189,11 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         temp = (
             force + self.polemass_length * theta_dot**2 * sintheta
         ) / self.total_mass
+
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
             self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass)
         )
+
         xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
 
         if self.kinematics_integrator == "euler":
@@ -740,18 +742,24 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         "render_fps": 50,
     }
 
-    def __init__(self, render_mode: Optional[str] = None):
+    def __init__(
+        self,
+        render_mode: Optional[str] = None,
+        min_action: float = -1.0,
+        max_action: float = +1.0,
+        force_mag: float = 30.0,
+    ):
         self.gravity = 9.8
         self.masscart = 1.0
         self.masspole = 0.1
         self.total_mass = self.masspole + self.masscart
         self.length = 0.5  # actually half the pole's length
         self.polemass_length = self.masspole * self.length
-        self.force_mag = 10.0
+        self.force_mag = force_mag
         self.tau = 0.02  # seconds between state updates
         self.kinematics_integrator = "euler"
-        self.min_action = -1.0
-        self.max_action = +1.0
+        self.min_action = min_action  #  [N] Minimum force applied to the system
+        self.max_action = max_action  #  [N] Maximum force applied to the system
 
         # Angle at which to fail the episode
         self.theta_threshold_radians = 360 * 2 * math.pi / 360
@@ -792,7 +800,7 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         assert self.state is not None, "Call reset before using step method."
         x, x_dot, theta, theta_dot = self.state
 
-        force = self.force_mag * action[0]
+        force = action[0] * self.force_mag
 
         costheta = math.cos(theta)
         sintheta = math.sin(theta)
@@ -997,12 +1005,17 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
         "render_modes": ["human", "rgb_array"],
         "render_fps": 50,
     }
+    min_action: float
+    max_action: float
 
     def __init__(
         self,
         num_envs: int = 2,
         max_episode_steps: int = 500,
         render_mode: Optional[str] = None,
+        min_action: float = -1.0,
+        max_action: float = 1.0,
+        force_mag: float = 30.0,
     ):
         super().__init__()
         self.num_envs = num_envs
@@ -1012,12 +1025,12 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
         self.total_mass = self.masspole + self.masscart
         self.length = 0.5  # actually half the pole's length
         self.polemass_length = self.masspole * self.length
-        self.force_mag = 10.0
+        self.force_mag = force_mag
         self.tau = 0.02  # seconds between state updates
         self.kinematics_integrator = "euler"
         self.max_episode_steps = max_episode_steps
-        self.min_action = -1.0
-        self.max_action = +1.0
+        self.min_action = min_action
+        self.max_action = max_action
 
         self.steps = np.zeros(num_envs, dtype=np.int32)
 
