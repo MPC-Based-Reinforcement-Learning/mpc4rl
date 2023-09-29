@@ -19,7 +19,6 @@ def stack_columns(matrix: np.ndarray) -> np.ndarray:
 def initialize_solver(
     acados_solver: AcadosOcpSolver, acados_ocp: AcadosOcp, param: dict
 ) -> int:
-    print("hallo")
     for stage in range(acados_ocp.dims.N):
         acados_solver.cost_set(stage, "yref", np.array(param["yref"]))
         acados_solver.set(stage, "x", np.array(param["x0"]))

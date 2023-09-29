@@ -16,7 +16,6 @@ from stable_baselines3.common.policies import MPC
 
 from rlmpc.common.utils import read_config
 
-
 from stable_baselines3.common.env_util import make_vec_env
 
 
@@ -134,19 +133,6 @@ class CartpoleOcpOptions(AcadosOcpOptions):
 
     def __init__(self):
         super().__init__()
-
-    # tf: float
-    # integrator_type: Optional[str]
-    # nlp_solver_type: Optional[str]
-    # qp_solver: Optional[str]
-    # hessian_approx: Optional[str]
-    # nlp_solver_max_iter: Optional[int]
-    # qp_solver_iter_max: Optional[int]
-
-    # TODO: Add more options to cover all AcadosOcpOptions. See
-    # https://docs.acados.org/interfaces/acados_python_interface/#acadosocpoptions
-    # for more info. Reconsider this solution, it requires more work to maintain
-    # when the AcadosOcpOptions class changes.
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -307,14 +293,7 @@ class CartpoleMPC(MPC):
         cost.cost_type = config.cost.cost_type
         cost.cost_type_e = config.cost.cost_type_e
 
-        # Q = np.array((cost_params["Q"]), dtype=np.float32)
-        # R = np.array((cost_params["R"]), dtype=np.float32)
-        # cost.W = np.diag(np.concatenate((config.cost.Q, config.cost.R)))
-
-        # Make a blockdiagonal matrix from Q and R
-
         cost.W = scipy.linalg.block_diag(config.cost.Q, config.cost.R)
-
         cost.W_e = config.cost.Q_e
 
         cost.Vx = np.zeros((dims.ny, dims.nx), dtype=np.float32)
@@ -344,12 +323,6 @@ class CartpoleMPC(MPC):
 
         self._ocp = ocp
         self._ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file)
-
-        # self._model = model
-        # self._cost = cost
-        # self._constraints = constraints
-        # self._dims = dims
-        # self._solver_options = config.ocp_options
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """
