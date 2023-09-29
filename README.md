@@ -32,8 +32,9 @@ With (rlmpc_venv) active, install stable_baselines3 with optional dependencies a
 ```
 
 
-<!-- Install acados interface to rlmpc_venv
+Install acados interface to rlmpc_venv following the instructions in [acados](https://docs.acados.org/python_interface/index.html)
 
 ``` bash
-    python -m pip install ~/software/acados/interfaces/acados_template
-``` -->
+    python -m pip install -e external/acados//interfaces/acados_template/
+
+```
