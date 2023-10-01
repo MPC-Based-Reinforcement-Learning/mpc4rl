@@ -1,6 +1,6 @@
 import sys
 
-from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver, AcadosModel, AcadosOcpConstraints
+from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver, AcadosModel, AcadosOcpConstraints, AcadosSim
 import numpy as np
 import scipy.linalg
 
@@ -178,46 +178,6 @@ class ConstraintDimension(object):
     Class to store dimensions of constraints
     """
 
-    lbu: int
-    lbx: int
-    lbx_0: int
-    lbx_e: int
-    lg: int
-    lg_e: int
-    lh: int
-    lh_e: int
-    lphi: int
-    lphi_e: int
-    lsbu: int
-    lsbx: int
-    lsbx_e: int
-    lsg: int
-    lsg_e: int
-    lsh: int
-    lsh_e: int
-    lsphi: int
-    lsphi_e: int
-
-    ubu: int
-    ubx: int
-    ubx_0: int
-    ubx_e: int
-    ug: int
-    ug_e: int
-    uh: int
-    uh_e: int
-    uphi: int
-    uphi_e: int
-    usbu: int
-    usbx: int
-    usbx_e: int
-    usg: int
-    usg_e: int
-    ush: int
-    ush_e: int
-    usphi: int
-    usphi_e: int
-
     order: list = [
         "lbu",
         "lbx",
@@ -241,21 +201,40 @@ class ConstraintDimension(object):
         "usphi",
     ]
 
-    idx: dict
+    idx_at_stage: list
 
     def __init__(self, constraints: AcadosOcpConstraints, N: int = 20):
         super().__init__()
 
-        # TODO: Revise when we have tests for more than box constraints
+        replacements = {
+            0: [("lbx", "lbx_0"), ("ubx", "ubx_0")],
+            N: [
+                ("lbx", "lbx_e"),
+                ("ubx", "ubx_e"),
+                ("lg", "lg_e"),
+                ("ug", "ug_e"),
+                ("lh", "lh_e"),
+                ("uh", "uh_e"),
+                ("lphi", "lphi_e"),
+                ("uphi", "uphi_e"),
+                ("lsbx", "lsbx_e"),
+                ("usbx", "usbx_e"),
+                ("lsg", "lsg_e"),
+                ("usg", "usg_e"),
+                ("lsh", "lsh_e"),
+                ("ush", "ush_e"),
+                ("lsphi", "lsphi_e"),
+                ("usphi", "usphi_e"),
+            ],
+        }
 
         idx_at_stage = [dict.fromkeys(self.order, 0) for _ in range(N)]
-        idx_at_stage[0] = rename_key_in_dict(idx_at_stage[0], "lbx", "lbx_0")
-        idx_at_stage[0] = rename_key_in_dict(idx_at_stage[0], "ubx", "ubx_0")
-        idx_at_stage[N] = rename_key_in_dict(idx_at_stage[N], "lbx", "lbx_e")
-        idx_at_stage[N] = rename_key_in_dict(idx_at_stage[N], "ubx", "ubx_e")
+
+        for stage, keys in replacements.items():
+            for old_key, new_key in keys:
+                idx_at_stage[stage] = rename_key_in_dict(idx_at_stage[stage], old_key, new_key)
 
         # Loop over all constraints and count the number of constraints of each type. Store the indices in a dict.
-        # Initial and terminal constraints need to special treatment.
         for idx in idx_at_stage:
             _start = 0
             _end = 0
@@ -265,10 +244,9 @@ class ConstraintDimension(object):
                     idx[attr] = slice(_start, _end)
                     _start = _end
 
-        idx_at_stage[0] = rename_key_in_dict(idx_at_stage[0], "lbx_0", "lbx")
-        idx_at_stage[0] = rename_key_in_dict(idx_at_stage[0], "ubx_0", "ubx")
-        idx_at_stage[N] = rename_key_in_dict(idx_at_stage[N], "lbx_e", "lbx")
-        idx_at_stage[N] = rename_key_in_dict(idx_at_stage[N], "ubx_e", "ubx")
+        for stage, keys in replacements.items():
+            for old_key, new_key in keys:
+                idx_at_stage[stage] = rename_key_in_dict(idx_at_stage[stage], new_key, old_key)
 
 
 class LagrangeFunction(object):
@@ -435,9 +413,9 @@ ocp.constraints.idxbu = np.array([0])
 
 ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES
 ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-ocp.solver_options.integrator_type = "ERK"
+ocp.solver_options.integrator_type = "DISCRETE"
 ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI
-ocp.solver_options.sim_method_num_steps = 2
+# ocp.solver_options.sim_method_num_steps = 2
 
 ocp.solver_options.qp_solver_cond_N = N
 
@@ -449,84 +427,89 @@ ocp.solver_options.tf = Tf
 ocp.parameter_values = np.array([1.0])
 
 acados_ocp_solver = AcadosOcpSolver(ocp, json_file="acados_ocp_" + model.name + ".json")
-acados_integrator = AcadosSimSolver(ocp, json_file="acados_ocp_" + model.name + ".json")
+
+sim = AcadosSim()
+sim.model = export_pendulum_ode_model()
+sim.dims = ocp.dims
+sim.parameter_values = ocp.parameter_values
+sim.solver_options.integrator_type = "ERK"
+sim.solver_options.num_stages = 4
+sim.solver_options.T = dT
+acados_integrator = AcadosSimSolver(sim, json_file="acados_sim" + model.name + ".json")
 
 Nsim = 100
 simX = np.ndarray((Nsim + 1, nx))
 simU = np.ndarray((Nsim, nu))
-
 simX[0, :] = x0
 
-acados_ocp_solver.set(0, "lbx", simX[0, :])
-acados_ocp_solver.set(0, "ubx", simX[0, :])
+if False:
+    acados_ocp_solver.set(0, "lbx", simX[0, :])
+    acados_ocp_solver.set(0, "ubx", simX[0, :])
 
-status = acados_ocp_solver.solve()
+    status = acados_ocp_solver.solve()
 
-############################################
+    ############################################
 
-if status != 0:
-    print(simX[0, :])
+    if status != 0:
+        print(simX[0, :])
+        acados_ocp_solver.print_statistics()
+        raise Exception("acados acados_ocp_solver returned status {} in closed loop {}. Exiting.".format(status, 0))
+
+    simU[0, :] = acados_ocp_solver.get(0, "u")
+
+    x = simX[0, :]
+    u = simU[0, :]
+
+    x_sym = acados_ocp_solver.acados_ocp.model.x
+    u_sym = acados_ocp_solver.acados_ocp.model.u
+    p_sym = acados_ocp_solver.acados_ocp.model.p
+    f_sym = acados_ocp_solver.acados_ocp.model.f_expl_expr
+    n_p = acados_ocp_solver.acados_ocp.dims.np
+
+    # Get number of constraints
+    n_h = acados_ocp_solver.acados_ocp.dims.nh
+
+    # Get lagrangian multipliers
+    pi = acados_ocp_solver.get(0, "pi")
+    lam = acados_ocp_solver.get(0, "lam")
+    t = acados_ocp_solver.get(0, "t")
+
+    # Model term
+    df_dp = jacobian(f_sym, p_sym)
+
+    # Cost term
+    Vx = acados_ocp_solver.acados_ocp.cost.Vx
+    Vu = acados_ocp_solver.acados_ocp.cost.Vu
+    Vx_e = acados_ocp_solver.acados_ocp.cost.Vx_e
+    yref = acados_ocp_solver.acados_ocp.cost.yref
+    yref_e = acados_ocp_solver.acados_ocp.cost.yref_e
+    W = acados_ocp_solver.acados_ocp.cost.W
+    W_e = acados_ocp_solver.acados_ocp.cost.W_e
+
+    # Get cost at stage
+    cost = acados_ocp_solver.get_cost()
+
+    # Get residuals from acados solver at stage 0
+    res = acados_ocp_solver.get_residuals()
+
     acados_ocp_solver.print_statistics()
-    raise Exception("acados acados_ocp_solver returned status {} in closed loop {}. Exiting.".format(status, 0))
 
-simU[0, :] = acados_ocp_solver.get(0, "u")
+    lagrange_function = LagrangeFunction(acados_ocp_solver, acados_integrator)
 
-x = simX[0, :]
-u = simU[0, :]
+    x = acados_ocp_solver.get(0, "x")
+    u = acados_ocp_solver.get(0, "u")
+    p = np.array([1.0])
 
-x_sym = acados_ocp_solver.acados_ocp.model.x
-u_sym = acados_ocp_solver.acados_ocp.model.u
-p_sym = acados_ocp_solver.acados_ocp.model.p
-f_sym = acados_ocp_solver.acados_ocp.model.f_expl_expr
-n_p = acados_ocp_solver.acados_ocp.dims.np
+    # Test
+    x0 = np.array([0.5, 0.0, 0.0, 0.0])
+    u0 = np.array([0.0])
+    print("f_theta(x,u,p) = ", lagrange_function.eval_f_theta(x0, u0, p))
 
-# Get number of constraints
-n_h = acados_ocp_solver.acados_ocp.dims.nh
+    L_theta = lagrange_function(acados_ocp_solver, p)
 
-# Get lagrangian multipliers
-pi = acados_ocp_solver.get(0, "pi")
-lam = acados_ocp_solver.get(0, "lam")
-t = acados_ocp_solver.get(0, "t")
+    print("L_theta = ", L_theta)
 
-# Model term
-df_dp = jacobian(f_sym, p_sym)
-
-# Cost term
-Vx = acados_ocp_solver.acados_ocp.cost.Vx
-Vu = acados_ocp_solver.acados_ocp.cost.Vu
-Vx_e = acados_ocp_solver.acados_ocp.cost.Vx_e
-yref = acados_ocp_solver.acados_ocp.cost.yref
-yref_e = acados_ocp_solver.acados_ocp.cost.yref_e
-W = acados_ocp_solver.acados_ocp.cost.W
-W_e = acados_ocp_solver.acados_ocp.cost.W_e
-
-# Get cost at stage
-cost = acados_ocp_solver.get_cost()
-
-# Get residuals from acados solver at stage 0
-res = acados_ocp_solver.get_residuals()
-
-acados_ocp_solver.print_statistics()
-
-
-lagrange_function = LagrangeFunction(acados_ocp_solver, acados_integrator)
-
-x = acados_ocp_solver.get(0, "x")
-u = acados_ocp_solver.get(0, "u")
-p = np.array([1.0])
-
-# Test
-x0 = np.array([0.5, 0.0, 0.0, 0.0])
-u0 = np.array([0.0])
-print("f_theta(x,u,p) = ", lagrange_function.eval_f_theta(x0, u0, p))
-
-
-L_theta = lagrange_function(acados_ocp_solver, p)
-
-print("L_theta = ", L_theta)
-
-
-exit(0)
+    exit(0)
 
 # closed loop
 for i in range(Nsim):
