@@ -15,5 +15,7 @@
         "${workspaceFolder}/rlmpc",
         "${workspaceFolder}/rlmpc/gym",
         "${workspaceFolder}/rlmpc/gym/env"
-    ]
+    ],
+    "python.formatting.blackArgs": ["--line-length", "120"],
+    "editor.rulers": [120]
 }
