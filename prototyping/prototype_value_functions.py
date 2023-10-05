@@ -237,7 +237,6 @@ class LagrangeMultiplierExtractor(object):
 
         # Loop over all constraints and count the number of constraints of each type. Store the indices in a dict.
         for stage, idx in enumerate(idx_at_stage):
-            print("stage = ", stage)
             _start = 0
             _end = 0
             for attr in dir(constraints):
@@ -755,6 +754,7 @@ def test_dL_dp(acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot=Fals
 
     L = np.zeros(p_test.shape[0])
     dL_dp = np.zeros(p_test.shape[0])
+
     for i, p_i in enumerate(p_test):
         for stage in range(acados_ocp_solver.acados_ocp.dims.N):
             acados_ocp_solver.set(stage, "p", p_i)
@@ -767,7 +767,7 @@ def test_dL_dp(acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot=Fals
         L[i] = lagrange_function(acados_ocp_solver, p_i)
         dL_dp[i] = lagrange_function.eval_dL_dp(acados_ocp_solver, p_i)
 
-    dL_dp_grad = np.gradient(L, p_test)
+    dL_dp_grad = np.gradient(L, p_test[1] - p_test[0])
 
     dp = p_test[1] - p_test[0]
 
@@ -775,13 +775,22 @@ def test_dL_dp(acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot=Fals
     constant = L[0] - L_reconstructed[0]
     L_reconstructed += constant
 
+    L_reconstructed_np_grad = np.cumsum(dL_dp_grad) * dp + L[0]
+    constant = L[0] - L_reconstructed_np_grad[0]
+    L_reconstructed_np_grad += constant
+
+    dL_dp_cd = (L[2:] - L[:-2]) / (p_test[2:] - p_test[:-2])
+
     if plot:
         _, ax = plt.subplots(nrows=2, ncols=1, sharex=True)
         ax[0].plot(p_test, L)
         ax[0].plot(p_test, L_reconstructed, "--")
+        ax[0].plot(p_test, L_reconstructed_np_grad, "-.")
+        ax[1].legend(["L", "L integrate dL_dp", "L_integrate np.grad"])
         ax[1].plot(p_test, dL_dp)
         ax[1].plot(p_test, dL_dp_grad, "--")
-        ax[1].legend(["algorithmic differentiation", "np.grad"])
+        ax[1].plot(p_test[1:-1], dL_dp_cd, "-.")
+        ax[1].legend(["algorithmic differentiation", "np.grad", "central difference"])
         ax[0].set_ylabel("L")
         ax[1].set_ylabel("dL_dp")
         ax[1].set_xlabel("p")
@@ -1113,16 +1122,16 @@ if __name__ == "__main__":
     acados_ocp_solver = export_acados_ocp_solver()
     p_test = np.arange(0.5, 1.5, 0.001)
 
-    w = allocate_primary_decision_variables(acados_ocp_solver)
-    w = stack_primary_decision_variables(w, acados_ocp_solver)
+    # w = allocate_primary_decision_variables(acados_ocp_solver)
+    # w = stack_primary_decision_variables(w, acados_ocp_solver)
 
-    # tests = dict()
+    tests = dict()
     # tests["test_f_vs_df_dp"] = test_f_vs_df_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test)
-    # tests["test_dL_dp"] = test_dL_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=False)
+    # tests["test_dL_dp"] = test_dL_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True)
     # tests["test_dV_dp"] = test_dV_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True)
-    # tests["test_dQ_dp"] = test_dQ_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True)
+    tests["test_dQ_dp"] = test_dQ_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True)
 
     # TODO:
     # tests["test_dpi_dp"] = test_dpi_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True)
 
-    # print("Tests: ", tests)
+    print("Tests: ", tests)
