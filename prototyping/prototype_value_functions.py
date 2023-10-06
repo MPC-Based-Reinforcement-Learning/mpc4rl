@@ -12,6 +12,7 @@ from acados_template import (
 import numpy as np
 import scipy.linalg
 
+
 from casadi import SX, vertcat, sin, cos, Function, jacobian
 
 import os
@@ -140,13 +141,8 @@ def export_pendulum_ode_model() -> AcadosModel:
     f_expl = vertcat(
         v1,
         dtheta,
-        (-m * l * sin_theta * dtheta * dtheta + m * g * cos_theta * sin_theta + F)
-        / denominator,
-        (
-            -m * l * cos_theta * sin_theta * dtheta * dtheta
-            + F * cos_theta
-            + (m_cart + m) * g * sin_theta
-        )
+        (-m * l * sin_theta * dtheta * dtheta + m * g * cos_theta * sin_theta + F) / denominator,
+        (-m * l * cos_theta * sin_theta * dtheta * dtheta + F * cos_theta + (m_cart + m) * g * sin_theta)
         / (l * denominator),
     )
 
@@ -248,9 +244,7 @@ class LagrangeMultiplierExtractor(object):
 
         for stage, keys in replacements.items():
             for old_key, new_key in keys:
-                idx_at_stage[stage] = rename_key_in_dict(
-                    idx_at_stage[stage], old_key, new_key
-                )
+                idx_at_stage[stage] = rename_key_in_dict(idx_at_stage[stage], old_key, new_key)
 
         # Loop over all constraints and count the number of constraints of each type. Store the indices in a dict.
         for stage, idx in enumerate(idx_at_stage):
@@ -335,18 +329,14 @@ def build_cost_functions(
         cost_y_expr_e = ocp.model.cost_y_expr_e
 
     else:
-        raise NotImplementedError(
-            "Only LINEAR_LS and NONLINEAR_LS cost types are supported at the moment."
-        )
+        raise NotImplementedError("Only LINEAR_LS and NONLINEAR_LS cost types are supported at the moment.")
 
     l = (cost_y_expr - yref).T @ W @ (cost_y_expr - yref)
     m = (cost_y_expr_e - yref_e).T @ W_e @ (cost_y_expr_e - yref_e)
 
     fun_l = Function("l", [x, u, p], [l], ["x", "u", "p"], ["l"])
     fun_m = Function("m", [x, p], [m], ["x", "p"], ["m"])
-    fun_dl_dp = Function(
-        "dl_dp", [x, u, p], [jacobian(l, p)], ["x", "u", "p"], ["dl_dp"]
-    )
+    fun_dl_dp = Function("dl_dp", [x, u, p], [jacobian(l, p)], ["x", "u", "p"], ["dl_dp"])
     fun_dm_dp = Function("dm_dp", [x, p], [jacobian(m, p)], ["x", "p"], ["dm_dp"])
 
     return fun_l, fun_m, fun_dl_dp, fun_dm_dp
@@ -370,22 +360,15 @@ def build_discrete_dynamics_functions(ocp: AcadosOcp) -> tuple[Function, Functio
     f = ocp.model.disc_dyn_expr
 
     # Build the discrete dynamics function
-    if (
-        ocp.solver_options.integrator_type == "ERK"
-        and ocp.solver_options.sim_method_num_stages == 4
-    ):
+    if ocp.solver_options.integrator_type == "ERK" and ocp.solver_options.sim_method_num_stages == 4:
         f = ERK4(f, x, u, p)
     elif ocp.solver_options.integrator_type == "DISCRETE":
         f = ocp.model.disc_dyn_expr
     else:
-        raise NotImplementedError(
-            "Only ERK4 and DISCRETE integrator types are supported at the moment."
-        )
+        raise NotImplementedError("Only ERK4 and DISCRETE integrator types are supported at the moment.")
 
     fun_f = Function("f", [x, u, p], [f], ["x", "u", "p"], ["xf"])
-    fun_df_dp = Function(
-        "df_dp", [x, u, p], [jacobian(f, p)], ["x", "u", "p"], ["dxf_dp"]
-    )
+    fun_df_dp = Function("df_dp", [x, u, p], [jacobian(f, p)], ["x", "u", "p"], ["dxf_dp"])
 
     return fun_f, fun_df_dp
 
@@ -432,12 +415,8 @@ class LagrangeFunction(object):
             acados_ocp_solver.acados_ocp.dims.N,
         )
 
-        self.fun_f, self.fun_df_dp = build_discrete_dynamics_functions(
-            acados_ocp_solver.acados_ocp
-        )
-        self.fun_l, self.fun_m, self.fun_dl_dp, self.fun_dm_dp = build_cost_functions(
-            acados_ocp_solver.acados_ocp
-        )
+        self.fun_f, self.fun_df_dp = build_discrete_dynamics_functions(acados_ocp_solver.acados_ocp)
+        self.fun_l, self.fun_m, self.fun_dl_dp, self.fun_dm_dp = build_cost_functions(acados_ocp_solver.acados_ocp)
         _ = build_constraint_functions(acados_ocp_solver.acados_ocp)
 
     def __call__(self, acados_ocp_solver: AcadosOcpSolver, p: np.ndarray) -> np.float32:
@@ -447,67 +426,68 @@ class LagrangeFunction(object):
 
         res = 0.0
 
-        constraints = acados_ocp_solver.acados_ocp.constraints
+        if True:
+            constraints = acados_ocp_solver.acados_ocp.constraints
 
-        # Initial condition equality constraint
-        stage = 0
-        res += self.lam_extractor(
-            stage, "lbx_0", acados_ocp_solver.get(stage, "lam")
-        ) @ (getattr(constraints, "lbx_0") - acados_ocp_solver.get(stage, "x"))
+            # Initial condition equality constraint
+            stage = 0
+            res += self.lam_extractor(stage, "lbx_0", acados_ocp_solver.get(stage, "lam")) @ (
+                getattr(constraints, "lbx_0") - acados_ocp_solver.get(stage, "x")
+            )
 
-        res += self.lam_extractor(
-            stage, "ubx_0", acados_ocp_solver.get(stage, "lam")
-        ) @ (getattr(constraints, "ubx_0") - acados_ocp_solver.get(stage, "x"))
+            res += self.lam_extractor(stage, "ubx_0", acados_ocp_solver.get(stage, "lam")) @ (
+                getattr(constraints, "ubx_0") - acados_ocp_solver.get(stage, "x")
+            )
 
-        # Inequality constraints at stage k
-        if getattr(constraints, "lbx").size > 0:
-            for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
-                res += self.lam_extractor(
-                    stage, "lbx", acados_ocp_solver.get(stage, "lam")
-                ) @ (getattr(constraints, "lbx") - acados_ocp_solver.get(stage, "x"))
+            # Inequality constraints at stage k
+            if getattr(constraints, "lbx").size > 0:
+                for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
+                    res += self.lam_extractor(stage, "lbx", acados_ocp_solver.get(stage, "lam")) @ (
+                        getattr(constraints, "lbx") - acados_ocp_solver.get(stage, "x")
+                    )
 
-        if getattr(constraints, "ubx").size > 0:
-            for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
-                res += self.lam_extractor(
-                    stage, "ubx", acados_ocp_solver.get(stage, "lam")
-                ) @ (getattr(constraints, "ubx") - acados_ocp_solver.get(stage, "x"))
+            if getattr(constraints, "ubx").size > 0:
+                for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
+                    res += self.lam_extractor(stage, "ubx", acados_ocp_solver.get(stage, "lam")) @ (
+                        getattr(constraints, "ubx") - acados_ocp_solver.get(stage, "x")
+                    )
 
-        if getattr(constraints, "lbu").size > 0:
-            for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
-                res += self.lam_extractor(
-                    stage, "lbu", acados_ocp_solver.get(stage, "lam")
-                ) @ (getattr(constraints, "lbu") - acados_ocp_solver.get(stage, "u"))
+            if getattr(constraints, "lbu").size > 0:
+                for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
+                    res += self.lam_extractor(stage, "lbu", acados_ocp_solver.get(stage, "lam")) @ (
+                        getattr(constraints, "lbu") - acados_ocp_solver.get(stage, "u")
+                    )
 
-        if getattr(constraints, "ubu").size > 0:
-            for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
-                res += self.lam_extractor(
-                    stage, "ubu", acados_ocp_solver.get(stage, "lam")
-                ) @ (getattr(constraints, "ubu") - acados_ocp_solver.get(stage, "u"))
+            if getattr(constraints, "ubu").size > 0:
+                for stage in range(1, acados_ocp_solver.acados_ocp.dims.N):
+                    res += self.lam_extractor(stage, "ubu", acados_ocp_solver.get(stage, "lam")) @ (
+                        getattr(constraints, "ubu") - acados_ocp_solver.get(stage, "u")
+                    )
 
-        # Terminal state inequality constraints
-        stage = acados_ocp_solver.acados_ocp.dims.N
-        if getattr(constraints, "lbx_e").size > 0:
-            res += self.lam_extractor(
-                stage, "lbx_e", acados_ocp_solver.get(stage, "lam")
-            ) @ (getattr(constraints, "lbx_e") - acados_ocp_solver.get(stage, "x"))
+            # Terminal state inequality constraints
+            stage = acados_ocp_solver.acados_ocp.dims.N
+            if getattr(constraints, "lbx_e").size > 0:
+                res += self.lam_extractor(stage, "lbx_e", acados_ocp_solver.get(stage, "lam")) @ (
+                    getattr(constraints, "lbx_e") - acados_ocp_solver.get(stage, "x")
+                )
 
-        if getattr(constraints, "ubx_e").size > 0:
-            res += self.lam_extractor(
-                stage, "ubx_e", acados_ocp_solver.get(stage, "lam")
-            ) @ (getattr(constraints, "ubx_e") - acados_ocp_solver.get(stage, "x"))
+            if getattr(constraints, "ubx_e").size > 0:
+                res += self.lam_extractor(stage, "ubx_e", acados_ocp_solver.get(stage, "lam")) @ (
+                    getattr(constraints, "ubx_e") - acados_ocp_solver.get(stage, "x")
+                )
 
         res += acados_ocp_solver.get_cost()
 
         # Dynamic equality constraint
+        res_dyn = 0
         for stage in range(acados_ocp_solver.acados_ocp.dims.N - 1):
-            res += acados_ocp_solver.get(stage, "pi") @ (
-                self.eval_f(
-                    x=acados_ocp_solver.get(stage, "x"),
-                    u=acados_ocp_solver.get(stage, "u"),
-                    p=p,
-                )
-                - acados_ocp_solver.get(stage + 1, "x")
-            )
+            x = acados_ocp_solver.get(stage, "x")
+            xnext = acados_ocp_solver.get(stage + 1, "x")
+            u = acados_ocp_solver.get(stage, "u")
+            pi = acados_ocp_solver.get(stage, "pi")
+            res_dyn += pi @ (self.eval_f(x=x, u=u, p=p) - xnext)
+
+        res += res_dyn
 
         return res
 
@@ -539,9 +519,7 @@ class LagrangeFunction(object):
         """
         return self.fun_df_dp(x=x, u=u, p=p)["dxf_dp"].full().flatten()
 
-    def eval_dL_dp(
-        self, acados_ocp_solver: AcadosOcpSolver, p: np.ndarray
-    ) -> np.ndarray:
+    def eval_dL_dp(self, acados_ocp_solver: AcadosOcpSolver, p: np.ndarray) -> np.ndarray:
         """
         Evaluate the gradient of the Lagrange function with respect to the parameters at the current solution of the OCP.
 
@@ -595,7 +573,7 @@ def ERK4(
     return xf
 
 
-def export_acados_ocp_solver() -> AcadosOcpSolver:
+def export_acados_ocp() -> AcadosOcp:
     """
     Define the acados OCP solver object.
 
@@ -668,6 +646,7 @@ def export_acados_ocp_solver() -> AcadosOcpSolver:
 
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
+    # ocp.solver_options.integrator_type = "DISCRETE"
     ocp.solver_options.integrator_type = "DISCRETE"
     ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI
 
@@ -680,13 +659,102 @@ def export_acados_ocp_solver() -> AcadosOcpSolver:
 
     ocp.parameter_values = np.array([1.0])
 
-    acados_ocp_solver = AcadosOcpSolver(
-        ocp, json_file="acados_ocp_" + model.name + ".json"
-    )
+    return ocp
 
-    acados_ocp_solver.set(0, "lbx", x0)
-    acados_ocp_solver.set(0, "ubx", x0)
-    return acados_ocp_solver
+
+def export_q_value_acados_ocp() -> AcadosOcp:
+    """
+    Define the acados OCP solver object.
+
+    Parameters:
+        ocp: acados OCP object
+
+    Returns:
+        acados_ocp_solver: acados OCP solver object
+    """
+
+    # create ocp object to formulate the OCP
+    ocp = AcadosOcp()
+
+    # set model
+    model = export_pendulum_ode_model()
+
+    action = SX.sym("action")
+    model.p = vertcat(model.p, action)
+
+    p = model.p
+
+    Tf = 1.0
+    N = 20
+    dT = Tf / N
+
+    ode = Function("ode", [model.x, model.u, model.p], [model.f_expl_expr])
+    model.disc_dyn_expr = ERK4(ode, model.x, model.u, model.p, dT)
+    print("built ERK4 for pendulum model with dT = ", dT)
+
+    ###
+    ocp.model = model
+
+    nx = model.x.size()[0]
+    nu = model.u.size()[0]
+    ny = nx + nu
+    ny_e = nx
+
+    # set dimensions
+    ocp.dims.N = N
+
+    # set cost module
+    ocp.cost.cost_type = "LINEAR_LS"
+    ocp.cost.cost_type_e = "LINEAR_LS"
+
+    Q = 2 * np.diag([1e3, 1e3, 1e-2, 1e-2])
+    R = 2 * np.diag([1e-1])
+
+    ocp.cost.W = scipy.linalg.block_diag(Q, R)
+
+    ocp.cost.W_e = Q
+
+    ocp.cost.Vx = np.zeros((ny, nx))
+    ocp.cost.Vx[:nx, :nx] = np.eye(nx)
+
+    Vu = np.zeros((ny, nu))
+    Vu[4, 0] = 1.0
+    ocp.cost.Vu = Vu
+
+    ocp.cost.Vx_e = np.eye(nx)
+
+    ocp.cost.yref = np.array((0.0, np.pi, 0.0, 0.0, 0.0))
+    ocp.cost.yref_e = np.array((0.0, np.pi, 0.0, 0.0))
+
+    # set constraints
+    Fmax = 80
+    x0 = np.array([0.5, 0.0, 0.0, 0.0])
+    ocp.constraints.lbu = np.array([-Fmax])
+    ocp.constraints.ubu = np.array([+Fmax])
+    ocp.constraints.x0 = x0
+    ocp.constraints.idxbu = np.array([0])
+
+    # ocp.constraints.constr_h_expr = vertcat(model.x, model.u)
+
+    # ocp.constraints.lbx = np.array([-2.0, -2 * np.pi, -10.0, -10.0])
+    # ocp.constraints.ubx = np.array([2.0, 2 * np.pi, 10.0, 10.0])
+    # ocp.constraints.idxbx = np.array([0, 1, 2, 3])
+
+    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES
+    ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
+    ocp.solver_options.integrator_type = "DISCRETE"
+    ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI
+
+    ocp.solver_options.qp_solver_cond_N = N
+
+    ocp.solver_options.qp_solver_iter_max = 200
+
+    # set prediction horizon
+    ocp.solver_options.tf = Tf
+
+    ocp.parameter_values = np.array([1.0, 0.0])
+
+    return ocp
 
 
 def print_attributes(obj: Any, name: str = ""):
@@ -731,9 +799,7 @@ def test_dynamics_equality_constraint_term(
             # u = u0
             # pi = np.ones_like(x0)
 
-            res["f"][i] += pi @ (
-                eval_f(x=x, u=u, p=p) - acados_ocp_solver.get(stage + 1, "x")
-            )
+            res["f"][i] += pi @ (eval_f(x=x, u=u, p=p) - acados_ocp_solver.get(stage + 1, "x"))
             res["df"][i] += pi @ eval_df_dp(x=x, u=u, p=p)
 
         res["df_cd"] = np.gradient(res["f"], p_test)
@@ -745,9 +811,7 @@ def test_dynamics_equality_constraint_term(
     # plt.show()
 
 
-def test_f_vs_df_dp(
-    acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot: bool = False
-) -> int:
+def test_f_vs_df_dp(acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot: bool = False) -> int:
     _x0 = np.array([0.5, 0.0, 0.0, 0.0])
     _u0 = acados_ocp_solver.solve_for_x0(_x0)
     _f, _df_dp = build_discrete_dynamics_functions(acados_ocp_solver.acados_ocp)
@@ -774,9 +838,7 @@ def test_f_vs_df_dp(
             ax[i, 0].legend(["algorithmic differentiation", "finite difference"])
             ax[i, 1].plot(p_test, _df_dp_test[:, i])
             ax[i, 1].plot(p_test, _df_dp_test_fd[:, i], "--")
-            ax[i, 1].legend(
-                ["algorithmic differentiation", "np.grad", "central difference"]
-            )
+            ax[i, 1].legend(["algorithmic differentiation", "np.grad", "central difference"])
             ax[i, 0].set_ylabel("f[{}]".format(i))
             ax[i, 1].set_ylabel("df_dp[{}]".format(i))
 
@@ -785,9 +847,7 @@ def test_f_vs_df_dp(
         ax[-1, 1].plot(p_test, df_dp_test_fd_sum, "--")
         ax[-1, 0].set_ylabel("f_sum")
         ax[-1, 1].set_ylabel("df_dp_sum")
-        ax[-1, 1].legend(
-            ["algorithmic differentiation", "np.grad", "central difference"]
-        )
+        ax[-1, 1].legend(["algorithmic differentiation", "np.grad", "central difference"])
         ax[-1, 0].set_xlabel("p")
 
         for ax_k in ax.reshape(-1):
@@ -795,28 +855,26 @@ def test_f_vs_df_dp(
 
         plt.show()
 
-    return int(
-        not np.allclose(_df_dp_test[1:-1], _df_dp_test_fd[1:-1], rtol=1e-2, atol=1e-2)
-    )
+    return int(not np.allclose(_df_dp_test[1:-1], _df_dp_test_fd[1:-1], rtol=1e-2, atol=1e-2))
 
 
-def test_dL_dp(acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot=False):
+def test_dL_dp(acados_ocp_solver: AcadosOcpSolver, x0: np.ndarray, p_test: np.ndarray, plot=False):
     lagrange_function = LagrangeFunction(acados_ocp_solver)
 
     L = np.zeros(p_test.shape[0])
     dL_dp = np.zeros(p_test.shape[0])
 
+    acados_ocp_solver.constraints_set(0, "lbx", x0)
+    acados_ocp_solver.constraints_set(0, "ubx", x0)
+
+    # TODO: Check why this is needed.
+    acados_ocp_solver.acados_ocp.constraints.lbx_0 = x0
+    acados_ocp_solver.acados_ocp.constraints.ubx_0 = x0
+
     for i, p_i in enumerate(p_test):
-        for stage in range(acados_ocp_solver.acados_ocp.dims.N):
-            acados_ocp_solver.set(stage, "p", p_i)
-
-        status = acados_ocp_solver.solve()
-
-        if status != 0:
-            raise Exception(
-                f"acados acados_ocp_solver returned status {status} Exiting."
-            )
-
+        acados_ocp_solver = update_parameters(acados_ocp_solver=acados_ocp_solver, p=p_i)
+        # print(acados_ocp_solver.acados_ocp.constraints.lbx)
+        _ = acados_ocp_solver.solve_for_x0(x0)
         L[i] = lagrange_function(acados_ocp_solver, p_i)
         dL_dp[i] = lagrange_function.eval_dL_dp(acados_ocp_solver, p_i)
 
@@ -855,9 +913,70 @@ def test_dL_dp(acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot=Fals
     return int(not np.allclose(dL_dp, dL_dp_grad, rtol=1e-2, atol=1e-2))
 
 
-def state_value_function(
-    acados_ocp_solver: AcadosOcpSolver, state: np.ndarray
-) -> float:
+def test_dpi_dp(acados_ocp_solver: AcadosOcpSolver, x0: np.ndarray, p_test: np.ndarray, nparam: int = 1, plot=False):
+    pi = np.zeros(p_test.shape[0])
+    dpi_dp = np.zeros(p_test.shape[0])
+
+    x0 = x0.tolist()
+
+    # x0_augmented = np.concatenate((x0, np.zeros((nparam,))))
+    x0_augmented = [np.array(x0 + [p]) for p in p_test]
+
+    # Initialize solver
+    for stage in range(acados_ocp_solver.acados_ocp.dims.N + 1):
+        acados_ocp_solver.set(stage, "x", x0_augmented[0])
+
+    # for i, p_i in enumerate(p_test):
+    for i, x in enumerate(x0_augmented):
+        acados_ocp_solver.set(0, "lbx", x)
+        acados_ocp_solver.set(0, "ubx", x)
+        acados_ocp_solver.set(0, "x", x)
+
+        status = acados_ocp_solver.solve()
+
+        if status != 0:
+            raise Exception(f"acados acados_ocp_solver returned status {status} Exiting.")
+
+        pi[i] = acados_ocp_solver.get(0, "u")[0]
+
+        dpi_dp[i] = compute_dpi_dtheta(acados_ocp_solver, nparam=nparam)
+
+    dpi_dp_grad = np.gradient(pi, p_test[1] - p_test[0])
+
+    dp = p_test[1] - p_test[0]
+
+    pi_reconstructed = np.cumsum(dpi_dp) * dp + pi[0]
+    constant = pi[0] - pi_reconstructed[0]
+    pi_reconstructed += constant
+
+    pi_reconstructed_np_grad = np.cumsum(dpi_dp_grad) * dp + pi[0]
+    constant = pi[0] - pi_reconstructed_np_grad[0]
+    pi_reconstructed_np_grad += constant
+
+    dpi_dp_cd = (pi[2:] - pi[:-2]) / (p_test[2:] - p_test[:-2])
+
+    if plot:
+        _, ax = plt.subplots(nrows=2, ncols=1, sharex=True)
+        ax[0].plot(p_test, pi)
+        # ax[0].plot(p_test, pi_reconstructed, "--")
+        # ax[0].plot(p_test, pi_reconstructed_np_grad, "-.")
+        ax[1].legend(["L", "L integrate dL_dp", "L_integrate np.grad"])
+        ax[1].plot(p_test, dpi_dp)
+        ax[1].plot(p_test, dpi_dp_grad, "--")
+        ax[1].plot(p_test[1:-1], dpi_dp_cd, "-.")
+        ax[1].legend(["algorithmic differentiation", "np.grad", "central difference"])
+        ax[0].set_ylabel("L")
+        ax[1].set_ylabel("dL_dp")
+        ax[1].set_xlabel("p")
+        ax[0].grid(True)
+        ax[1].grid(True)
+
+        plt.show()
+
+    return int(not np.allclose(dpi_dp, dpi_dp_grad, rtol=1e-2, atol=1e-2))
+
+
+def state_value_function(acados_ocp_solver: AcadosOcpSolver, state: np.ndarray) -> float:
     """
     Evaluate the state-value function at the given state.
 
@@ -883,7 +1002,7 @@ def state_value_function(
 
 def test_dV_dp(
     acados_ocp_solver: AcadosOcpSolver,
-    state: np.ndarray = np.array([0.5, 0.0, 0.0, 0.0]),
+    x0: np.ndarray = np.array([0.5, 0.0, 0.0, 0.0]),
     p_test: np.ndarray = np.arange(0.5, 1.5, 0.001),
     plot=False,
 ):
@@ -892,17 +1011,9 @@ def test_dV_dp(
     V = np.zeros(p_test.shape[0])
     dV_dp = np.zeros(p_test.shape[0])
     for i, p_i in enumerate(p_test):
-        acados_ocp_solver = update_parameters(
-            acados_ocp_solver=acados_ocp_solver, p=p_i
-        )
-
-        # status = acados_ocp_solver.solve()
-
-        # if status != 0:
-        #     raise Exception(f"acados acados_ocp_solver returned status {status} Exiting.")
-
-        # V[i] = acados_ocp_solver.get_cost()
-        V[i] = state_value_function(acados_ocp_solver=acados_ocp_solver, state=state)
+        acados_ocp_solver = update_parameters(acados_ocp_solver=acados_ocp_solver, p=p_i)
+        acados_ocp_solver.solve_for_x0(x0)
+        V[i] = state_value_function(acados_ocp_solver=acados_ocp_solver, state=x0)
         dV_dp[i] = lagrange_function.eval_dL_dp(acados_ocp_solver, p_i)
 
     dV_dp_grad = np.gradient(V, p_test)
@@ -953,8 +1064,10 @@ def state_action_value_function(
     acados_ocp_solver.set(0, "u", action)
     acados_ocp_solver.constraints_set(0, "lbx", state)
     acados_ocp_solver.constraints_set(0, "ubx", state)
-    acados_ocp_solver.constraints_set(0, "lbu", action)
-    acados_ocp_solver.constraints_set(0, "ubu", action)
+
+    # The solver struggles with this solution
+    acados_ocp_solver.constraints_set(0, "lbu", action - 1)
+    acados_ocp_solver.constraints_set(0, "ubu", action + 1)
 
     status = acados_ocp_solver.solve()
 
@@ -999,14 +1112,13 @@ def test_dQ_dp(
     Q = np.zeros(p_test.shape[0])
     dQ_dp = np.zeros(p_test.shape[0])
     for i, p_i in enumerate(p_test):
-        acados_ocp_solver = update_parameters(
-            acados_ocp_solver=acados_ocp_solver, p=p_i
-        )
+        acados_ocp_solver = update_parameters(acados_ocp_solver=acados_ocp_solver, p=p_i)
+        u0 = acados_ocp_solver.solve_for_x0(state)
 
         Q[i] = state_action_value_function(
             acados_ocp_solver=acados_ocp_solver,
             state=state,
-            action=action,
+            action=u0,
             parameter=p_i,
         )
         dQ_dp[i] = lagrange_function.eval_dL_dp(acados_ocp_solver, p_i)
@@ -1037,9 +1149,7 @@ def test_dQ_dp(
     return int(not np.allclose(dQ_dp, dQ_dp_grad, rtol=1e-2, atol=1e-2))
 
 
-def update_parameters(
-    acados_ocp_solver: AcadosOcpSolver, p: np.ndarray
-) -> AcadosOcpSolver:
+def update_parameters(acados_ocp_solver: AcadosOcpSolver, p: np.ndarray) -> AcadosOcpSolver:
     """
     Update the parameters of the OCP solver.
 
@@ -1077,27 +1187,7 @@ def policy(acados_ocp_solver: AcadosOcpSolver, state: np.ndarray):
     return acados_ocp_solver.get(0, "u")
 
 
-def test_dpi_dp(
-    acados_ocp_solver: AcadosOcpSolver, p_test: np.ndarray, plot=False
-) -> int:
-    """
-    Test the sensitivity of the policy with respect to the parameters.
-
-    Parameters:
-        acados_ocp_solver: acados OCP solver object
-        p_test: parameter values to test
-        plot: plot the results
-
-    Returns:
-        int: 0 if test passed, 1 otherwise
-    """
-
-    return 1
-
-
-def stack_primary_decision_variables(
-    w: np.ndarray, acados_ocp_solver: AcadosOcpSolver
-) -> np.ndarray:
+def stack_primary_decision_variables(w: np.ndarray, acados_ocp_solver: AcadosOcpSolver) -> np.ndarray:
     """
     Stack the primary decision variables of the OCP solver.
 
@@ -1111,16 +1201,12 @@ def stack_primary_decision_variables(
 
     for stage in range(acados_ocp_solver.acados_ocp.dims.N + 1):
         w[
-            stage
-            * acados_ocp_solver.acados_ocp.dims.nx : (stage + 1)
-            * acados_ocp_solver.acados_ocp.dims.nx
+            stage * acados_ocp_solver.acados_ocp.dims.nx : (stage + 1) * acados_ocp_solver.acados_ocp.dims.nx
         ] = acados_ocp_solver.get(stage, "x")
 
     for stage in range(acados_ocp_solver.acados_ocp.dims.N):
         w[
-            stage
-            * acados_ocp_solver.acados_ocp.dims.nu : (stage + 1)
-            * acados_ocp_solver.acados_ocp.dims.nu
+            stage * acados_ocp_solver.acados_ocp.dims.nu : (stage + 1) * acados_ocp_solver.acados_ocp.dims.nu
         ] = acados_ocp_solver.get(stage, "u")
 
     return w
@@ -1190,40 +1276,271 @@ def test_stack_primary_decision_variables(acados_ocp_solver: AcadosOcpSolver) ->
 
     wrapped = wrapper(stack_primary_decision_variables, w, acados_ocp_solver)
     execution_time = timeit.timeit(wrapped, number=1000)
-    print(
-        f"stack_primary_decision_variables took {execution_time/1000} seconds on average to run."
-    )
+    print(f"stack_primary_decision_variables took {execution_time/1000} seconds on average to run.")
 
     wrapped = wrapper(stack_primary_decision_variables_slow, acados_ocp_solver)
     execution_time = timeit.timeit(wrapped, number=1000)
-    print(
-        f"stack_primary_decision_variables_slow took {execution_time/1000} seconds on average to run."
+    print(f"stack_primary_decision_variables_slow took {execution_time/1000} seconds on average to run.")
+
+
+def export_parameter_augmented_pendulum_ode_model() -> AcadosModel:
+    model_name = "parameter_augmented_pendulum_ode"
+
+    # constants
+    # M = 1.0  # mass of the cart [kg]
+    m = 0.1  # mass of the ball [kg]
+    g = 9.81  # gravity constant [m/s^2]
+    l = 0.8  # length of the rod [m]
+
+    M = SX.sym("M")  # mass of the cart [kg]
+    # m = SX.sym("m")  # mass of the ball [kg]
+    # g = SX.sym("g")  # gravity constant [m/s^2]
+    # l = SX.sym("l")  # length of the rod [m]
+
+    nparam = 1
+
+    # set up states & controls
+    p = SX.sym("p")
+    theta = SX.sym("theta")
+    v = SX.sym("v")
+    omega = SX.sym("omega")
+
+    # x = vertcat(p, theta, v, omega, M, m, g, l)
+    x = vertcat(p, theta, v, omega, M)
+
+    F = SX.sym("F")
+    u = vertcat(F)
+
+    # xdot
+    p_dot = SX.sym("p_dot")
+    theta_dot = SX.sym("theta_dot")
+    v_dot = SX.sym("v_dot")
+    omega_dot = SX.sym("omega_dot")
+    M_dot = SX.sym("M_dot")
+    # m_dot = SX.sym("m_dot")
+    # g_dot = SX.sym("g_dot")
+    # l_dot = SX.sym("l_dot")
+
+    # xdot = vertcat(p_dot, theta_dot, v_dot, omega_dot, M_dot, m_dot, g_dot, l_dot)
+    xdot = vertcat(p_dot, theta_dot, v_dot, omega_dot, M_dot)
+
+    # algebraic variables
+    # z = None
+
+    # parameters
+    param = []
+
+    # dynamics
+    cos_theta = cos(theta)
+    sin_theta = sin(theta)
+    denominator = M + m - m * cos_theta * cos_theta
+    f_expl = vertcat(
+        v,
+        omega,
+        (-m * l * sin_theta * omega * omega + m * g * cos_theta * sin_theta + F) / denominator,
+        (-m * l * cos_theta * sin_theta * omega * omega + F * cos_theta + (M + m) * g * sin_theta) / (l * denominator),
+        0.0,
     )
+
+    f_impl = xdot - f_expl
+
+    model = AcadosModel()
+
+    model.f_impl_expr = f_impl
+    model.f_expl_expr = f_expl
+    model.x = x
+    model.xdot = xdot
+    model.u = u
+    # model.z = z
+    model.p = param
+    model.name = model_name
+
+    return model, nparam
+
+
+# def export_parameter_augmented_ocp(
+#     x0=np.array([0.0, np.pi / 6, 0.0, 0.0, 1.0, 0.1, 9.81, 0.5]), N_horizon=50, T_horizon=2.0, Fmax=80.0
+# ) -> AcadosOcp:
+def export_parameter_augmented_ocp(
+    x0=np.array([0.0, np.pi / 6, 0.0, 0.0, 1.0]), N_horizon=50, T_horizon=2.0, Fmax=80.0
+) -> AcadosOcp:
+    # create ocp object to formulate the OCP
+    ocp = AcadosOcp()
+
+    # set model
+    model, nparam = export_parameter_augmented_pendulum_ode_model()
+
+    # # Use a discrete dynamics model
+    # model.disc_dyn_expr = ERK4_no_param(model.f_expl_expr, model.x, model.u, T_horizon / N_horizon)
+
+    # ocp.parameter_values = np.array([1.0])
+    ocp.model = model
+
+    # set dimensions
+    ocp.dims.N = N_horizon
+    nu = ocp.model.u.size()[0]
+    nx = ocp.model.x.size()[0]
+
+    # set cost
+    Q_mat = 2 * np.diag([1e3, 1e3, 1e-2, 1e-2])
+    R_mat = 2 * np.diag([1e-1])
+
+    # We use the NONLINEAR_LS cost type and GAUSS_NEWTON Hessian approximation - One can also use the external cost module to specify generic cost.
+    ocp.cost.cost_type = "NONLINEAR_LS"
+    ocp.cost.cost_type_e = "NONLINEAR_LS"
+    ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
+    ocp.cost.W_e = Q_mat
+
+    ocp.model.cost_y_expr = vertcat(model.x[:-nparam], model.u)
+    ocp.model.cost_y_expr_e = model.x[:-nparam]
+    ocp.cost.yref = np.zeros((nx - nparam + nu,))
+    ocp.cost.yref_e = np.zeros((nx - nparam,))
+
+    # set constraints
+    ocp.constraints.lbu = np.array([-Fmax])
+    ocp.constraints.ubu = np.array([+Fmax])
+    ocp.constraints.idxbu = np.array([0])
+
+    ocp.constraints.x0 = x0
+
+    # set options
+    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES
+    # PARTIAL_CONDENSING_HPIPM, FULL_CONDENSING_QPOASES, FULL_CONDENSING_HPIPM,
+    # PARTIAL_CONDENSING_QPDUNES, PARTIAL_CONDENSING_OSQP, FULL_CONDENSING_DAQP
+    ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # 'GAUSS_NEWTON', 'EXACT'
+    ocp.solver_options.integrator_type = "IRK"  # "DISCRETE"
+    # ocp.solver_options.print_level = 1
+    ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI, SQP
+    ocp.solver_options.nlp_solver_max_iter = 400
+    # ocp.solver_options.levenberg_marquardt = 1e-4
+
+    # set prediction horizon
+    ocp.solver_options.tf = T_horizon
+
+    return ocp, nparam
+
+
+def compute_dpi_dtheta(acados_ocp_solver: AcadosOcpSolver, nparam: int = 1) -> float:
+    """
+    Compute the derivative of the policy pi_theta(state) w.r.t. theta. Assumes acados_ocp_solver stores the current solution.
+
+    Parameters:
+        acados_ocp_solver: acados solver object
+        state: state
+        action: action
+
+    Returns:
+        derivative of policy pi_theta(state) w.r.t. theta as a numpy array of shape (nu, nparam)
+    """
+
+    nx = acados_ocp_solver.acados_ocp.dims.nx
+
+    # Scalar control input
+    nu = 1
+    dpi_dtheta = np.zeros((nu, nparam))
+    for i_param in range(nparam):
+        acados_ocp_solver.eval_param_sens(nx - nparam + i_param)
+
+        dpi_dtheta[:, i_param] = acados_ocp_solver.get(0, "sens_u")
+
+    return dpi_dtheta
+
+
+def test_augmented_state_formulation(
+    # x0: np.ndarray = np.array([0.0, np.pi / 6, 0.0, 0.0, 1.0, 0.1, 9.81, 0.8]),
+    x0: np.ndarray = np.array([0.0, np.pi / 6, 0.0, 0.0, 1.0]),
+    N_horizon: int = 50,
+    T_horizon: float = 2.0,
+    Fmax: float = 80.0,
+):
+    ocp, nparam = export_parameter_augmented_ocp(x0, N_horizon, T_horizon, Fmax)
+
+    acados_solver = AcadosOcpSolver(ocp, json_file="parameter_augmented_state_acados_ocp.json")
+
+    sim = AcadosSim()
+    # sim.model = export_parametric_pendulum_ode_model()
+    sim.model, _ = export_parameter_augmented_pendulum_ode_model()
+    sim.solver_options.T = T_horizon / N_horizon
+    sim.solver_options.integrator_type = "IRK"
+    sim.solver_options.num_stages = 4
+
+    acados_integrator = AcadosSimSolver(sim)
+
+    # # # prepare closed loop simulation
+    Nsim = 100
+
+    nx = ocp.model.x.size()[0]
+    nu = ocp.model.u.size()[0]
+    simX = np.ndarray((Nsim + 1, nx))
+    simU = np.ndarray((Nsim, nu))
+
+    # # xcurrent = x0
+    simX[0, :] = x0
+
+    # initialize solver
+    for stage in range(N_horizon + 1):
+        # set initial guess
+        acados_solver.set(stage, "x", x0)
+
+    # solve ocp
+    status = acados_solver.solve()
+
+    if status != 0:
+        raise Exception("acados returned status {} in closed loop simulation!".format(status))
+    else:
+        print("acados returned status {} in closed loop simulation!".format(status))
+
+    dpi_dtheta = np.zeros((Nsim, nparam))
+    # closed loop
+    for i in range(Nsim):
+        # solve ocp
+        simU[i, :] = acados_solver.solve_for_x0(x0_bar=simX[i, :])
+
+        # simulate system
+        simX[i + 1, :] = acados_integrator.simulate(x=simX[i, :], u=simU[i, :])
+
+        # compute policy gradient
+        dpi_dtheta[i, :] = compute_dpi_dtheta(acados_solver, nparam)
+
+        print("dpi_dtheta", dpi_dtheta[i, :])
+
+    # plot results
+    plot_pendulum(np.linspace(0, T_horizon / N_horizon * Nsim, Nsim + 1), Fmax, simU, simX[:, :-nparam])
 
 
 if __name__ == "__main__":
     """
     Test the sensitivites value functions with respect a parameter change in the pendulum mass.
     """
-    acados_ocp_solver = export_acados_ocp_solver()
-    p_test = np.arange(0.5, 1.5, 0.001)
-
-    # w = allocate_primary_decision_variables(acados_ocp_solver)
-    # w = stack_primary_decision_variables(w, acados_ocp_solver)
 
     tests = dict()
-    # tests["test_f_vs_df_dp"] = test_f_vs_df_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test)
-    tests["test_dL_dp"] = test_dL_dp(
-        acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True
-    )
-    tests["test_dV_dp"] = test_dV_dp(
-        acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True
-    )
-    tests["test_dQ_dp"] = test_dQ_dp(
-        acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True
-    )
+    p_test = np.arange(0.5, 1.5, 0.01)
+    x0 = np.array([0.0, np.pi / 2, 0.0, 0.0])
 
-    # TODO:
-    # tests["test_dpi_dp"] = test_dpi_dp(acados_ocp_solver=acados_ocp_solver, p_test=p_test, plot=True)
+    if False:
+        test_augmented_state_formulation()
+
+    if False:
+        ocp, nparam = export_parameter_augmented_ocp()
+
+        acados_ocp_solver = AcadosOcpSolver(ocp, json_file="parameter_augmented_acados_ocp.json")
+
+        tests["test_dpi_dp"] = test_dpi_dp(
+            acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, nparam=nparam, plot=True
+        )
+
+    if True:
+        ocp = export_acados_ocp()
+
+        acados_ocp_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json")
+
+        # tests["test_dL_dp"] = test_dL_dp(acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, plot=True)
+        # tests["test_dV_dp"] = test_dV_dp(acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, plot=True)
+
+        # q_ocp = export_q_value_acados_ocp()
+
+        tests["test_dQ_dp"] = test_dQ_dp(
+            acados_ocp_solver=acados_ocp_solver, state=x0, action=np.array([1.0]), p_test=p_test, plot=True
+        )
 
     print("Tests: ", tests)
