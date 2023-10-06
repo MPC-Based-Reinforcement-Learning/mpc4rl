@@ -1,10 +1,19 @@
 {
-    "editor.defaultFormatter": "ms-python.python",
-    "editor.formatOnType": false,
-    "editor.formatOnSave": true,
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.formatOnType": false,
     },
-    "python.formatting.provider": "none",
-    "cmake.configureOnOpen": false
+    "python.autoComplete.extraPaths": [
+        "${workspaceFolder}/external/stable_baselines3",
+        "${workspaceFolder}/rlmpc",
+        "${workspaceFolder}/rlmpc/gym",
+        "${workspaceFolder}/rlmpc/gym/env"
+    ],
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/external/stable_baselines3",
+        "${workspaceFolder}/rlmpc",
+        "${workspaceFolder}/rlmpc/gym",
+        "${workspaceFolder}/rlmpc/gym/env"
+    ]
 }
