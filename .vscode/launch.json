@@ -10,7 +10,9 @@
             "request": "launch",
             // "program": "${workspaceFolder}/tests/test_gym_continuous_cartpole_swingup.py",
             // "program": "${workspaceFolder}/tests/test_mpc_gym_cartpole.py",
-            "program": "${workspaceFolder}/prototyping/prototype_value_functions.py",
+            // "program": "${workspaceFolder}/prototyping/prototype_value_functions.py",
+            // "program": "${workspaceFolder}/prototyping/policy_gradient_example.py",
+            "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true
         }

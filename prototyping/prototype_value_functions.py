@@ -1,4 +1,3 @@
-import sys
 from typing import Any, Union
 
 from acados_template import (
@@ -17,7 +16,6 @@ from casadi import SX, vertcat, sin, cos, Function, jacobian
 
 import os
 import matplotlib.pyplot as plt
-import numpy as np
 from acados_template import latexify_plot
 
 
@@ -105,6 +103,7 @@ def export_pendulum_ode_model() -> AcadosModel:
         m_cart = 1.0  # mass of the cart [kg]
     else:
         m_cart = SX.sym("m_cart")
+
     m = 0.1  # mass of the ball [kg]
     g = 9.81  # gravity constant [m/s^2]
     l = 0.8  # length of the rod [m]
@@ -679,11 +678,6 @@ def export_q_value_acados_ocp() -> AcadosOcp:
     # set model
     model = export_pendulum_ode_model()
 
-    action = SX.sym("action")
-    model.p = vertcat(model.p, action)
-
-    p = model.p
-
     Tf = 1.0
     N = 20
     dT = Tf / N
@@ -723,8 +717,8 @@ def export_q_value_acados_ocp() -> AcadosOcp:
 
     ocp.cost.Vx_e = np.eye(nx)
 
-    ocp.cost.yref = np.array((0.0, np.pi, 0.0, 0.0, 0.0))
-    ocp.cost.yref_e = np.array((0.0, np.pi, 0.0, 0.0))
+    ocp.cost.yref = np.array((0.0, 0.0, 0.0, 0.0, 0.0))
+    ocp.cost.yref_e = np.array((0.0, 0.0, 0.0, 0.0))
 
     # set constraints
     Fmax = 80
@@ -733,8 +727,12 @@ def export_q_value_acados_ocp() -> AcadosOcp:
     ocp.constraints.ubu = np.array([+Fmax])
     ocp.constraints.x0 = x0
     ocp.constraints.idxbu = np.array([0])
+    ocp.constraints.idxsbu = np.array([0])
 
-    # ocp.constraints.constr_h_expr = vertcat(model.x, model.u)
+    ocp.cost.zu = np.array([1e3])
+    ocp.cost.zl = np.array([1e3])
+    ocp.cost.Zl = np.array([1e3])
+    ocp.cost.Zu = np.array([1e3])
 
     # ocp.constraints.lbx = np.array([-2.0, -2 * np.pi, -10.0, -10.0])
     # ocp.constraints.ubx = np.array([2.0, 2 * np.pi, 10.0, 10.0])
@@ -742,6 +740,7 @@ def export_q_value_acados_ocp() -> AcadosOcp:
 
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
+    # ocp.solver_options.integrator_type = "DISCRETE"
     ocp.solver_options.integrator_type = "DISCRETE"
     ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI
 
@@ -752,7 +751,7 @@ def export_q_value_acados_ocp() -> AcadosOcp:
     # set prediction horizon
     ocp.solver_options.tf = Tf
 
-    ocp.parameter_values = np.array([1.0, 0.0])
+    ocp.parameter_values = np.array([1.0])
 
     return ocp
 
@@ -917,10 +916,8 @@ def test_dpi_dp(acados_ocp_solver: AcadosOcpSolver, x0: np.ndarray, p_test: np.n
     pi = np.zeros(p_test.shape[0])
     dpi_dp = np.zeros(p_test.shape[0])
 
-    x0 = x0.tolist()
-
     # x0_augmented = np.concatenate((x0, np.zeros((nparam,))))
-    x0_augmented = [np.array(x0 + [p]) for p in p_test]
+    x0_augmented = [np.array(x0.tolist() + [p]) for p in p_test]
 
     # Initialize solver
     for stage in range(acados_ocp_solver.acados_ocp.dims.N + 1):
@@ -928,18 +925,10 @@ def test_dpi_dp(acados_ocp_solver: AcadosOcpSolver, x0: np.ndarray, p_test: np.n
 
     # for i, p_i in enumerate(p_test):
     for i, x in enumerate(x0_augmented):
-        acados_ocp_solver.set(0, "lbx", x)
-        acados_ocp_solver.set(0, "ubx", x)
-        acados_ocp_solver.set(0, "x", x)
+        pi[i] = acados_ocp_solver.solve_for_x0(x)[0]
 
-        status = acados_ocp_solver.solve()
-
-        if status != 0:
-            raise Exception(f"acados acados_ocp_solver returned status {status} Exiting.")
-
-        pi[i] = acados_ocp_solver.get(0, "u")[0]
-
-        dpi_dp[i] = compute_dpi_dtheta(acados_ocp_solver, nparam=nparam)
+        dpi_dp_i = compute_dpi_dtheta(acados_ocp_solver, nparam=nparam)[0]
+        dpi_dp[i] = dpi_dp_i
 
     dpi_dp_grad = np.gradient(pi, p_test[1] - p_test[0])
 
@@ -1066,8 +1055,8 @@ def state_action_value_function(
     acados_ocp_solver.constraints_set(0, "ubx", state)
 
     # The solver struggles with this solution
-    acados_ocp_solver.constraints_set(0, "lbu", action - 1)
-    acados_ocp_solver.constraints_set(0, "ubu", action + 1)
+    acados_ocp_solver.constraints_set(0, "lbu", action)
+    acados_ocp_solver.constraints_set(0, "ubu", action)
 
     status = acados_ocp_solver.solve()
 
@@ -1146,7 +1135,8 @@ def test_dQ_dp(
 
         plt.show()
 
-    return int(not np.allclose(dQ_dp, dQ_dp_grad, rtol=1e-2, atol=1e-2))
+    # The tolerance is quite high because the action-value function is not smooth at several points.
+    return int(not np.allclose(dQ_dp, dQ_dp_grad, rtol=1e-1, atol=1e-1))
 
 
 def update_parameters(acados_ocp_solver: AcadosOcpSolver, p: np.ndarray) -> AcadosOcpSolver:
@@ -1281,6 +1271,92 @@ def test_stack_primary_decision_variables(acados_ocp_solver: AcadosOcpSolver) ->
     wrapped = wrapper(stack_primary_decision_variables_slow, acados_ocp_solver)
     execution_time = timeit.timeit(wrapped, number=1000)
     print(f"stack_primary_decision_variables_slow took {execution_time/1000} seconds on average to run.")
+
+
+def export_parameter_and_control_augmented_pendulum_dae_model() -> AcadosModel:
+    model_name = "parameter_augmented_pendulum_ode"
+
+    # constants
+    # M = 1.0  # mass of the cart [kg]
+    m = 0.1  # mass of the ball [kg]
+    g = 9.81  # gravity constant [m/s^2]
+    l = 0.8  # length of the rod [m]
+
+    M = SX.sym("M")  # mass of the cart [kg]
+    # m = SX.sym("m")  # mass of the ball [kg]
+    # g = SX.sym("g")  # gravity constant [m/s^2]
+    # l = SX.sym("l")  # length of the rod [m]
+
+    nparam = 1
+
+    # set up states & controls
+    p = SX.sym("p")
+    theta = SX.sym("theta")
+    v = SX.sym("v")
+    omega = SX.sym("omega")
+    x_u = SX.sym("x_u")
+
+    # x = vertcat(p, theta, v, omega, M, m, g, l)
+    x = vertcat(p, theta, v, omega, x_u, M)
+
+    F = SX.sym("F")
+    u = vertcat(F)
+
+    # xdot
+    p_dot = SX.sym("p_dot")
+    theta_dot = SX.sym("theta_dot")
+    v_dot = SX.sym("v_dot")
+    omega_dot = SX.sym("omega_dot")
+    M_dot = SX.sym("M_dot")
+    # m_dot = SX.sym("m_dot")
+    # g_dot = SX.sym("g_dot")
+    # l_dot = SX.sym("l_dot")
+
+    # xdot = vertcat(p_dot, theta_dot, v_dot, omega_dot, M_dot, m_dot, g_dot, l_dot)
+    xdot = vertcat(p_dot, theta_dot, v_dot, omega_dot, M_dot)
+
+    # algebraic variables
+    # z = SX.sym("z")
+
+    # parameters
+    param = []
+
+    # dynamics
+    cos_theta = cos(theta)
+    sin_theta = sin(theta)
+    denominator = M + m - m * cos_theta * cos_theta
+    # f_expl = vertcat(
+    #     v,
+    #     omega,
+    #     (-m * l * sin_theta * omega * omega + m * g * cos_theta * sin_theta + F) / denominator,
+    #     (-m * l * cos_theta * sin_theta * omega * omega + F * cos_theta + (M + m) * g * sin_theta) / (l * denominator),
+    #     0.0,
+    # )
+    f_impl = vertcat(
+        p_dot - v,
+        theta_dot - omega,
+        v_dot - (-m * l * sin_theta * omega * omega + m * g * cos_theta * sin_theta + F) / denominator,
+        omega_dot
+        - (-m * l * cos_theta * sin_theta * omega * omega + F * cos_theta + (M + m) * g * sin_theta)
+        / (l * denominator),
+        M_dot - 0.0,
+        x_u - u,
+    )
+
+    # f_impl = xdot - f_expl
+
+    model = AcadosModel()
+
+    model.f_impl_expr = f_impl
+    model.f_expl_expr = []
+    model.x = x
+    model.xdot = xdot
+    model.u = u
+    # model.z = z
+    model.p = param
+    model.name = model_name
+
+    return model, nparam
 
 
 def export_parameter_augmented_pendulum_ode_model() -> AcadosModel:
@@ -1433,13 +1509,9 @@ def compute_dpi_dtheta(acados_ocp_solver: AcadosOcpSolver, nparam: int = 1) -> f
         derivative of policy pi_theta(state) w.r.t. theta as a numpy array of shape (nu, nparam)
     """
 
-    nx = acados_ocp_solver.acados_ocp.dims.nx
-
-    # Scalar control input
-    nu = 1
-    dpi_dtheta = np.zeros((nu, nparam))
+    dpi_dtheta = np.zeros((acados_ocp_solver.acados_ocp.dims.nu, nparam))
     for i_param in range(nparam):
-        acados_ocp_solver.eval_param_sens(nx - nparam + i_param)
+        acados_ocp_solver.eval_param_sens(acados_ocp_solver.acados_ocp.dims.nx - nparam + i_param)
 
         dpi_dtheta[:, i_param] = acados_ocp_solver.get(0, "sens_u")
 
@@ -1514,7 +1586,7 @@ if __name__ == "__main__":
     """
 
     tests = dict()
-    p_test = np.arange(0.5, 1.5, 0.01)
+    p_test = np.arange(0.5, 1.5, 0.001)
     x0 = np.array([0.0, np.pi / 2, 0.0, 0.0])
 
     if False:
@@ -1529,15 +1601,18 @@ if __name__ == "__main__":
             acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, nparam=nparam, plot=True
         )
 
-    if True:
+    if False:
         ocp = export_acados_ocp()
 
         acados_ocp_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json")
 
         # tests["test_dL_dp"] = test_dL_dp(acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, plot=True)
-        # tests["test_dV_dp"] = test_dV_dp(acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, plot=True)
+        tests["test_dV_dp"] = test_dV_dp(acados_ocp_solver=acados_ocp_solver, x0=x0, p_test=p_test, plot=True)
 
-        # q_ocp = export_q_value_acados_ocp()
+    if True:
+        q_ocp = export_q_value_acados_ocp()
+
+        acados_ocp_solver = AcadosOcpSolver(q_ocp, json_file="acados_ocp.json")
 
         tests["test_dQ_dp"] = test_dQ_dp(
             acados_ocp_solver=acados_ocp_solver, state=x0, action=np.array([1.0]), p_test=p_test, plot=True
