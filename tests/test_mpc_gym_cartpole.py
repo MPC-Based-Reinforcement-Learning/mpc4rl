@@ -12,7 +12,8 @@ from rlmpc.gym.continuous_cartpole.environment import (
     ContinuousCartPoleSwingUpEnv,
 )
 
-from stable_baselines3.common.policies import MPC
+# from stable_baselines3.common.policies import MPC
+from rlmpc.common.mpc import MPC
 
 from rlmpc.common.utils import read_config
 
@@ -489,6 +490,8 @@ if __name__ == "__main__":
         verbose=1,
         policy_kwargs={"mpc": mpc},
     )
+
+    # Insert training here
 
     vec_env = model.get_env()
 

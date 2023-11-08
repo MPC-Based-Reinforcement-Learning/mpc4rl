@@ -1,21 +1,4 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true,
-        "editor.formatOnType": false,
-    },
-    "python.autoComplete.extraPaths": [
-        "${workspaceFolder}/external/stable_baselines3",
-        "${workspaceFolder}/rlmpc",
-        "${workspaceFolder}/rlmpc/gym",
-        "${workspaceFolder}/rlmpc/gym/env"
-    ],
-    // "python.analysis.extraPaths": [
-    //     "${workspaceFolder}/external/stable_baselines3",
-    //     "${workspaceFolder}/rlmpc",
-    //     "${workspaceFolder}/rlmpc/gym",
-    //     "${workspaceFolder}/rlmpc/gym/env"
-    // ]
     "latex-workshop.view.pdf.invertMode.sepia": 1,
     "latex-workshop.view.pdf.invert": 0.0,
     "latex-workshop.latex.autoBuild.run": "never",
@@ -79,12 +62,12 @@
     ],
     "vim.textwidth": 120,
     // Hide latex auto generated files
-    // "files.exclude": {
-    // "**/*.blg": true,
-    // "**/*.aux": true,
-    // "**/*.log": true,
-    // "**/*.auxlock": true,
-    // "**/*.bbl": true,
-    // "**/*.synctex.gz": true,
-    // }
+    "files.exclude": {
+        // "**/*.blg": true,
+        // "**/*.aux": true,
+        // "**/*.log": true,
+        // "**/*.auxlock": true,
+        "**/*.bbl": true,
+        "**/*.synctex.gz": true,
+    }
 }
