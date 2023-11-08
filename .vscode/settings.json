@@ -17,5 +17,8 @@
         "${workspaceFolder}/rlmpc/gym/env"
     ],
     "python.formatting.blackArgs": ["--line-length", "120"],
-    "editor.rulers": [120]
+    "editor.rulers": [
+        120
+    ],
+    "cmake.configureOnOpen": false
 }
