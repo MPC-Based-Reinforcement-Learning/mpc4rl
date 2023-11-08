@@ -25,7 +25,7 @@ Create python virtual environment
 assuming the binary python3.11 exists. Replace with some other 3.8+ version possible.
 
 
-With (rlmpc_venv) active, install stable_baselines3 with optional dependencies and make it editable
+(Necessary for development?): With (rlmpc_venv) active, install stable_baselines3 with optional dependencies and make it editable
 
 ``` bash
     python -m pip install -e <rlmpc_root>/external/stable_baselines3/.[extra,tests,docs]
@@ -35,6 +35,6 @@ With (rlmpc_venv) active, install stable_baselines3 with optional dependencies a
 Install acados interface to rlmpc_venv following the instructions in [acados](https://docs.acados.org/python_interface/index.html)
 
 ``` bash
-    python -m pip install -e external/acados//interfaces/acados_template/
+    python -m pip install -e external/acados/interfaces/acados_template/
 
 ```
