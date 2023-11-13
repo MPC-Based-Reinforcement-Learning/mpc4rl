@@ -10,12 +10,12 @@
         "${workspaceFolder}/rlmpc/gym",
         "${workspaceFolder}/rlmpc/gym/env"
     ],
-    // "python.analysis.extraPaths": [
-    //     "${workspaceFolder}/external/stable_baselines3",
-    //     "${workspaceFolder}/rlmpc",
-    //     "${workspaceFolder}/rlmpc/gym",
-    //     "${workspaceFolder}/rlmpc/gym/env"
-    // ]
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/external/stable_baselines3",
+        "${workspaceFolder}/rlmpc",
+        "${workspaceFolder}/rlmpc/gym",
+        "${workspaceFolder}/rlmpc/gym/env"
+    ],
     "latex-workshop.view.pdf.invertMode.sepia": 1,
     "latex-workshop.view.pdf.invert": 0.0,
     "latex-workshop.latex.autoBuild.run": "never",
