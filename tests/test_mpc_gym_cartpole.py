@@ -2,9 +2,8 @@
     Test MPC for a cartpole in gym. No learning.
 """
 
-from typing import Optional
+from typing import Callable
 import gymnasium as gym
-import scipy
 
 from stable_baselines3 import PPO
 from rlmpc.gym.continuous_cartpole.environment import (
@@ -12,16 +11,33 @@ from rlmpc.gym.continuous_cartpole.environment import (
     ContinuousCartPoleSwingUpEnv,
 )
 
-# from stable_baselines3.common.policies import MPC
-from rlmpc.common.mpc import MPC
-
 from rlmpc.common.utils import read_config
 
-from stable_baselines3.common.env_util import make_vec_env
-
-import matplotlib.pyplot as plt
 
 from rlmpc.mpc.cartpole.cartpole import CartpoleMPC, Config
+
+from rlmpc.ppo.policies import MPCMultiInputActorCriticPolicy
+
+
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    """
+    Linear learning rate schedule.
+
+    :param initial_value: Initial learning rate.
+    :return: schedule that computes
+      current learning rate depending on remaining progress
+    """
+
+    def func(progress_remaining: float) -> float:
+        """
+        Progress will decrease from 1 (beginning) to 0.
+
+        :param progress_remaining:
+        :return: current learning rate
+        """
+        return progress_remaining * initial_value
+
+    return func
 
 
 if __name__ == "__main__":
@@ -35,13 +51,11 @@ if __name__ == "__main__":
         force_mag=config["environment"]["force_mag"],
     )
 
-    mpc = CartpoleMPC(config=Config.from_dict(config["mpc"]))
-
     model = PPO(
-        "ModelPredictiveControlPolicy",
-        env,
+        policy=MPCMultiInputActorCriticPolicy,
+        env=env,
         verbose=1,
-        policy_kwargs={"mpc": mpc},
+        policy_kwargs={"mpc": CartpoleMPC(config=Config.from_dict(config["mpc"]))},
     )
 
     # Insert training here
