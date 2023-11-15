@@ -207,6 +207,8 @@ class Config:
 class CartpoleMPC(MPC):
     """docstring for CartpoleMPC."""
 
+    _parameters: np.ndarray
+
     def __init__(self, config: Config):
         super().__init__()
 
@@ -325,7 +327,24 @@ class CartpoleMPC(MPC):
         ocp.solver_options = config.ocp_options
 
         self._ocp = ocp
-        self._ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file)
+
+        # TODO: Add config entries for json file and c_generated_code folder, and build, generate flags
+        if False:
+            self._ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file)
+        else:
+            # Assumes json file and c_generated_code folder already exists
+            self._ocp_solver = AcadosOcpSolver(
+                ocp, json_file=config.meta.json_file, build=False, generate=False
+            )
+
+        self._parameters = np.array(
+            [
+                config.model.M,
+                config.model.m,
+                config.model.l,
+                config.model.g,
+            ]
+        )
 
         # self._model = model
         # self._cost = cost
@@ -376,6 +395,9 @@ class CartpoleMPC(MPC):
         )
 
         return action
+
+    def get_parameters(self) -> np.ndarray:
+        return self._parameters
 
     def _get_predicted_state_trajectory(self) -> np.ndarray:
         """

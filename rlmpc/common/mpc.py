@@ -1,3 +1,4 @@
+from typing import Iterator
 import numpy as np
 from abc import ABC, abstractmethod
 from acados_template import AcadosOcp, AcadosOcpSolver
@@ -21,4 +22,12 @@ class MPC(ABC):
 
         :param observation: the input observation
         :return: the action
+        """
+
+    @abstractmethod
+    def get_parameters(self) -> np.ndarray:
+        """
+        Get the parameters of the MPC.
+
+        :return: the parameters
         """
