@@ -14,7 +14,7 @@ from rlmpc.gym.continuous_cartpole.environment import (
 from rlmpc.common.utils import read_config
 
 
-from rlmpc.mpc.cartpole.cartpole import CartpoleMPC, Config
+from rlmpc.mpc.cartpole.cartpole import AcadosMPC, Config
 
 from rlmpc.ppo.policies import MPCMultiInputActorCriticPolicy
 
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         policy=MPCMultiInputActorCriticPolicy,
         env=env,
         verbose=1,
-        policy_kwargs={"mpc": CartpoleMPC(config=Config.from_dict(config["mpc"]))},
+        policy_kwargs={"mpc": AcadosMPC(config=Config.from_dict(config["mpc"]))},
     )
 
     # Insert training here
