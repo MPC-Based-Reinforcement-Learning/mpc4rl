@@ -9,10 +9,12 @@ from rlmpc.gym.continuous_cartpole.environment import (
     ContinuousCartPoleSwingUpEnv,
 )
 
-from mpc.cartpole.acados import AcadosMPC, Config
+from rlmpc.mpc.cartpole.acados import AcadosMPC, Config
 
 import gymnasium as gym
 import numpy as np
+
+from rlmpc.mpc.cartpole.common import Config, Param, ModelParams
 
 from stable_baselines3 import TD3
 from stable_baselines3.common.noise import (
@@ -22,6 +24,8 @@ from stable_baselines3.common.noise import (
 
 if __name__ == "__main__":
     config = read_config("config/test_td3_interface.yaml")
+
+    model_params = ModelParams.from_dict(config["mpc"]["model"]["params"])
 
     env = gym.make(
         config["environment"]["id"],

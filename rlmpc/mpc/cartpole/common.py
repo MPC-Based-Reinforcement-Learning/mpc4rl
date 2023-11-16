@@ -7,20 +7,38 @@ import scipy
 
 
 @dataclass
+class Param:
+    value: float
+    fixed: bool = True
+
+    @classmethod
+    def from_dict(cls, config_dict: dict):
+        return cls(**config_dict)
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
 class ModelParams:
     """
     Parameter class for Cartpole model in MPC.
     """
 
-    M: float  # mass of the cart
-    m: float  # mass of the pole
-    l: float  # length of the pole
-    g: float  # gravity
-    name: str = "cartpole_model"
+    M: Param  # mass of the cart
+    m: Param  # mass of the pole
+    l: Param  # length of the pole
+    g: Param  # gravity
 
     @classmethod
     def from_dict(cls, config_dict: dict):
-        return ModelParams(**config_dict)
+        # return ModelParams(**config_dict)
+        return cls(
+            M=Param.from_dict(config_dict["M"]),
+            m=Param.from_dict(config_dict["m"]),
+            l=Param.from_dict(config_dict["l"]),
+            g=Param.from_dict(config_dict["g"]),
+        )
 
     def to_dict(self):
         return asdict(self)
@@ -155,7 +173,8 @@ class Meta:
 class Config:
     """Configuration class for managing mpc parameters."""
 
-    model: Optional[ModelParams]
+    model_name: Optional[str]
+    model_params: Optional[ModelParams]
     cost: Optional[CostParams]
     constraints: Optional[ConstraintParams]
     dimensions: Optional[Dimensions]
@@ -165,7 +184,8 @@ class Config:
     @classmethod
     def from_dict(cls, config_dict: dict):
         return cls(
-            model=ModelParams.from_dict(config_dict["model"]),
+            model_name=config_dict["model"]["name"],
+            model_params=ModelParams.from_dict(config_dict["model"]["params"]),
             cost=CostParams.from_dict(config_dict["cost"]),
             constraints=ConstraintParams.from_dict(config_dict["constraints"]),
             dimensions=Dimensions.from_dict(config_dict["dimensions"]),
@@ -176,8 +196,11 @@ class Config:
     def to_dict(self) -> dict:
         config_dict = {}
 
-        if self.model is not None:
-            config_dict["model"] = self.model.to_dict()
+        if self.model_name is not None:
+            config_dict["model_name"] = self.model_name
+
+        if self.model_params is not None:
+            config_dict["model_params"] = self.model_params.to_dict()
 
         if self.cost is not None:
             config_dict["cost"] = self.cost.to_dict()
@@ -198,7 +221,7 @@ class Config:
 
 
 def define_model_expressions(config: Config) -> dict:
-    name = config.model.name
+    name = config.model_name
 
     # set up states & controls
     s = cs.SX.sym("x")
@@ -217,21 +240,20 @@ def define_model_expressions(config: Config) -> dict:
     z = None
 
     # parameters
-    # p = {}
+    p_sym = []
 
-    # parameter_symbols = []
-    # parameter_values = []
-    # for param_name, value_dict in param.items():
-    #     if value_dict["fixed"]:
-    #         p[param_name] = value_dict["value"]
-    #     else:
-    #         p[param_name] = cs.SX.sym(param_name)
-    #         parameter_symbols += [p[param_name]]
-    #         parameter_values += [value_dict["value"]]
+    # Set up parameters to nominal values
+    p = {key: param["value"] for key, param in config.model_params.to_dict().items()}
 
-    # p = []
+    parameter_values = []
+    # Set up parameters to symbolic variables if not fixed
+    for key, param in config.model_params.to_dict().items():
+        if not param["fixed"]:
+            p_sym += [cs.SX.sym(key)]
+            p[key] = p_sym[-1]
+            parameter_values += [param["value"]]
 
-    p = config.model.to_dict()
+    p_sym = cs.vertcat(*p_sym)
 
     # Define model dynamics
     cos_theta = cs.cos(theta)
@@ -257,11 +279,12 @@ def define_model_expressions(config: Config) -> dict:
     model["f_expl_expr"] = f_expl
     model["x"] = x
     model["xdot"] = x_dot
+    model["p"] = p_sym
     model["u"] = u
     model["z"] = z
     model["name"] = name
 
-    return model
+    return model, np.array(parameter_values)
 
 
 def define_dimensions(config: Config) -> dict:
@@ -304,8 +327,6 @@ def define_cost(config: Config) -> dict:
 def define_constraints(config: Config) -> dict:
     constraints = dict()
 
-    dims = define_dimensions(config)
-
     constraints["constr_type"] = config.constraints.constraint_type
     constraints["x0"] = config.constraints.x0.reshape(-1)
     constraints["lbu"] = config.constraints.lbu.reshape(-1)
@@ -316,3 +337,14 @@ def define_constraints(config: Config) -> dict:
     constraints["idxbu"] = config.constraints.idxbu.reshape(-1)
 
     return constraints
+
+
+def define_parameters(config: Config) -> np.array:
+    return np.array(
+        [
+            config.model.M,
+            config.model.m,
+            config.model.l,
+            config.model.g,
+        ]
+    )

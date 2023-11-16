@@ -11,7 +11,7 @@ from rlmpc.gym.continuous_cartpole.environment import (
 
 from stable_baselines3.common.torch_layers import FlattenExtractor
 
-from rlmpc.mpc.cartpole.cartpole import AcadosMPC, Config
+from mpc.cartpole.acados import AcadosMPC, Config
 
 import gymnasium as gym
 import numpy as np

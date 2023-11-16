@@ -14,7 +14,7 @@ from rlmpc.gym.continuous_cartpole.environment import (
 from rlmpc.common.utils import read_config
 
 
-from rlmpc.mpc.cartpole.cartpole import AcadosMPC, Config
+from mpc.cartpole.acados import AcadosMPC, Config
 
 from rlmpc.ppo.policies import MPCMultiInputActorCriticPolicy
 

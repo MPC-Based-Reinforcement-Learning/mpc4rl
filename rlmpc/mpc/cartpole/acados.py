@@ -33,10 +33,10 @@ def define_acados_model(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
         raise TypeError("config must be an instance of Config")
 
     try:
-        model = define_model_expressions(config)
+        model, ocp.parameter_values = define_model_expressions(config)
     except Exception as e:
         # Handle or re-raise exception from define_constraints
-        raise RuntimeError("Error in define_constraints: " + str(e))
+        raise RuntimeError("Error in define_acados_model: " + str(e))
 
     for key, val in model.items():
         # Check if the attribute exists in ocp.constraints
@@ -47,7 +47,7 @@ def define_acados_model(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
         # TODO: Add validation for the value here
         setattr(ocp.model, key, val)
 
-    return ocp.model
+    return ocp.model, ocp.parameter_values
 
 
 def define_acados_dims(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
@@ -74,6 +74,7 @@ def define_acados_dims(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
         # TODO: Add validation for the value here
         setattr(ocp.dims, key, val)
 
+    ocp.dims.np = ocp.model.p.size()[0]
     return ocp.dims
 
 
@@ -141,7 +142,7 @@ class AcadosMPC(MPC):
 
         ocp = AcadosOcp()
 
-        ocp.model = define_acados_model(ocp=ocp, config=config)
+        ocp.model, ocp.parameter_values = define_acados_model(ocp=ocp, config=config)
 
         ocp.dims = define_acados_dims(ocp=ocp, config=config)
 
@@ -162,14 +163,16 @@ class AcadosMPC(MPC):
                 ocp, json_file=config.meta.json_file, build=False, generate=False
             )
 
-        self._parameters = np.array(
-            [
-                config.model.M,
-                config.model.m,
-                config.model.l,
-                config.model.g,
-            ]
-        )
+        self._parameters = ocp.parameter_values
+
+        # self._parameters = np.array(
+        #     [
+        #         config.model.M,
+        #         config.model.m,
+        #         config.model.l,
+        #         config.model.g,
+        #     ]
+        # )
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """

@@ -12,7 +12,9 @@
             // "program": "${workspaceFolder}/tests/test_mpc_gym_cartpole.py",
             // "program": "${workspaceFolder}/tests/test_td3_interface.py",
             // "program": "${file}",
-            "program": "${workspaceFolder}/tests/test_td3_mpc_acados.py",
+            // "program": "${workspaceFolder}/tests/test_td3_mpc_acados.py",
+            // "program": "${workspaceFolder}/tests/test_td3_CasadiMPC.py",
+            "program": "${workspaceFolder}/tests/test_td3_AcadosMPC.py",
             "console": "integratedTerminal",
             "justMyCode": true
         }

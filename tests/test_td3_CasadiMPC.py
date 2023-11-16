@@ -9,7 +9,7 @@ from rlmpc.gym.continuous_cartpole.environment import (
     ContinuousCartPoleSwingUpEnv,
 )
 
-from rlmpc.mpc.cartpole.cartpole import AcadosMPC, Config
+from rlmpc.mpc.cartpole.casadi import CasadiMPC, Config
 
 import gymnasium as gym
 import numpy as np
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         env,
         action_noise=action_noise,
         verbose=1,
-        policy_kwargs={"mpc": AcadosMPC(config=Config.from_dict(config["mpc"]))},
+        policy_kwargs={"mpc": CasadiMPC(config=Config.from_dict(config["mpc"]))},
         train_freq=(100, "step"),
     )
 
