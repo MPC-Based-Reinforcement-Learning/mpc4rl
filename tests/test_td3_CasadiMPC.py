@@ -46,6 +46,11 @@ if __name__ == "__main__":
         train_freq=(100, "step"),
     )
 
+    mpc = CasadiMPC(config=Config.from_dict(config["mpc"]))
+    # mpc = model.policy.actor.mpc
+
+    exit(0)
+
     vec_env = model.get_env()
 
     obs = vec_env.reset()

@@ -220,7 +220,7 @@ class Config:
         return config_dict
 
 
-def define_model_expressions(config: Config) -> dict:
+def define_model_expressions(config: Config) -> (dict, np.ndarray):
     name = config.model_name
 
     # set up states & controls
@@ -254,6 +254,7 @@ def define_model_expressions(config: Config) -> dict:
             parameter_values += [param["value"]]
 
     p_sym = cs.vertcat(*p_sym)
+    parameter_values = np.array(parameter_values)
 
     # Define model dynamics
     cos_theta = cs.cos(theta)
@@ -284,7 +285,7 @@ def define_model_expressions(config: Config) -> dict:
     model["z"] = z
     model["name"] = name
 
-    return model, np.array(parameter_values)
+    return model, parameter_values
 
 
 def define_dimensions(config: Config) -> dict:
@@ -339,12 +340,12 @@ def define_constraints(config: Config) -> dict:
     return constraints
 
 
-def define_parameters(config: Config) -> np.array:
-    return np.array(
-        [
-            config.model.M,
-            config.model.m,
-            config.model.l,
-            config.model.g,
-        ]
-    )
+# def define_parameters(config: Config) -> np.array:
+#     return np.array(
+#         [
+#             config.model.M,
+#             config.model.m,
+#             config.model.l,
+#             config.model.g,
+#         ]
+#     )

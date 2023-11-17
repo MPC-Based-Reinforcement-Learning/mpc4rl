@@ -63,7 +63,7 @@ def define_acados_dims(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
         dims = define_dimensions(config)
     except Exception as e:
         # Handle or re-raise exception from define_constraints
-        raise RuntimeError("Error in define_constraints: " + str(e))
+        raise RuntimeError("Error in define_acados_dims: " + str(e))
 
     for key, val in dims.items():
         # Check if the attribute exists in ocp.constraints
@@ -91,7 +91,7 @@ def define_acados_cost(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
         cost = define_cost(config)
     except Exception as e:
         # Handle or re-raise exception from define_constraints
-        raise RuntimeError("Error in define_constraints: " + str(e))
+        raise RuntimeError("Error in define_acados_cost: " + str(e))
 
     for key, val in cost.items():
         # Check if the attribute exists in ocp.constraints
@@ -164,15 +164,6 @@ class AcadosMPC(MPC):
             )
 
         self._parameters = ocp.parameter_values
-
-        # self._parameters = np.array(
-        #     [
-        #         config.model.M,
-        #         config.model.m,
-        #         config.model.l,
-        #         config.model.g,
-        #     ]
-        # )
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """
