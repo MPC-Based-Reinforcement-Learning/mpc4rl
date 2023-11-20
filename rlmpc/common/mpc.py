@@ -2,6 +2,7 @@ from typing import Iterator
 import numpy as np
 from abc import ABC, abstractmethod
 from acados_template import AcadosOcp, AcadosOcpSolver
+import casadi as cs
 
 
 class MPC(ABC):
@@ -9,8 +10,8 @@ class MPC(ABC):
     MPC abstract base class.
     """
 
-    _ocp: AcadosOcp
-    _ocp_solver: AcadosOcpSolver
+    ocp: AcadosOcp
+    ocp_solver: AcadosOcpSolver
 
     def __init__(self):
         super().__init__()
