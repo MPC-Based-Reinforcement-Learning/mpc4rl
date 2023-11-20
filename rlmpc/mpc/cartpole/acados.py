@@ -5,6 +5,7 @@ from acados_template import (
     AcadosOcpSolver,
     AcadosOcpConstraints,
     AcadosOcpCost,
+    AcadosOcpDims,
 )
 
 from rlmpc.common.mpc import MPC
@@ -23,7 +24,7 @@ from rlmpc.mpc.cartpole.common import (
 # TODO: Define a function to get the model, dims, cost, constraints, and solver options from a config file. Check if refactor to one function
 
 
-def define_acados_model(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
+def define_acados_model(ocp: AcadosOcp, config: Config) -> (AcadosOcpCost, np.ndarray):
     # Check if ocp is an instance of AcadosOcp
     if not isinstance(ocp, AcadosOcp):
         raise TypeError("ocp must be an instance of AcadosOcp")
@@ -50,7 +51,7 @@ def define_acados_model(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
     return ocp.model, ocp.parameter_values
 
 
-def define_acados_dims(ocp: AcadosOcp, config: Config) -> AcadosOcpCost:
+def define_acados_dims(ocp: AcadosOcp, config: Config) -> AcadosOcpDims:
     # Check if ocp is an instance of AcadosOcp
     if not isinstance(ocp, AcadosOcp):
         raise TypeError("ocp must be an instance of AcadosOcp")
@@ -152,14 +153,14 @@ class AcadosMPC(MPC):
 
         ocp.solver_options = config.ocp_options
 
-        self._ocp = ocp
+        self.ocp = ocp
 
         # TODO: Add config entries for json file and c_generated_code folder, and build, generate flags
         if build:
-            self._ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file)
+            self.ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file)
         else:
             # Assumes json file and c_generated_code folder already exists
-            self._ocp_solver = AcadosOcpSolver(
+            self.ocp_solver = AcadosOcpSolver(
                 ocp, json_file=config.meta.json_file, build=False, generate=False
             )
 
@@ -173,7 +174,9 @@ class AcadosMPC(MPC):
         :param action: Action to scale
         :return: Scaled action
         """
-        low, high = self.action_space.low, self.action_space.high
+        low = self.ocp.constraints.lbu
+        high = self.ocp.constraints.ubu
+
         return 2.0 * ((action - low) / (high - low)) - 1.0
 
     def get_action(self, x0: np.ndarray) -> np.ndarray:
@@ -187,56 +190,48 @@ class AcadosMPC(MPC):
             u: Optimal control action.
         """
         # Set initial state
-        self._ocp_solver.set(0, "lbx", x0)
-        self._ocp_solver.set(0, "ubx", x0)
-        self._ocp_solver.set(0, "x", x0)
+        self.ocp_solver.set(0, "lbx", x0)
+        self.ocp_solver.set(0, "ubx", x0)
 
         # Solve the optimization problem
-        self._ocp_solver.solve()
+        self.ocp_solver.solve()
 
         # Get solution
-        u = self._ocp_solver.get(0, "u")
+        action = self.ocp_solver.get(0, "u")
 
         # Scale to [-1, 1] for gym
-        action = (
-            2.0
-            * (
-                (u - self._ocp.constraints.lbu)
-                / (self._ocp.constraints.ubu - self._ocp.constraints.lbu)
-            )
-            - 1.0
-        )
+        action = self.scale_action(action)
 
         return action
 
     def get_parameters(self) -> np.ndarray:
         return self._parameters
 
-    def _get_predicted_state_trajectory(self) -> np.ndarray:
+    def get_predicted_state_trajectory(self) -> np.ndarray:
         """
         Get the predicted state trajectory.
 
         Returns:
             x: Predicted state trajectory.
         """
-        x = np.zeros((self._ocp.dims.N + 1, self._ocp.dims.nx))
+        x = np.zeros((self.ocp.dims.N + 1, self.ocp.dims.nx))
 
-        for i in range(self._ocp.dims.N + 1):
-            x[i, :] = self._ocp_solver.get(i, "x")
+        for i in range(self.ocp.dims.N + 1):
+            x[i, :] = self.ocp_solver.get(i, "x")
 
         return x
 
-    def _get_predicted_control_trajectory(self) -> np.ndarray:
+    def get_predicted_control_trajectory(self) -> np.ndarray:
         """
         Get the predicted control trajectory.
 
         Returns:
             u: Predicted control trajectory.
         """
-        u = np.zeros((self._ocp.dims.N, self._ocp.dims.nu))
+        u = np.zeros((self.ocp.dims.N, self.ocp.dims.nu))
 
-        for i in range(self._ocp.dims.N):
-            u[i, :] = self._ocp_solver.get(i, "u")
+        for i in range(self.ocp.dims.N):
+            u[i, :] = self.ocp_solver.get(i, "u")
 
         return u
 
@@ -245,22 +240,20 @@ class AcadosMPC(MPC):
         Plot the predicted trajectory.
         """
 
-        x = self._get_predicted_state_trajectory()
-        u = self._get_predicted_control_trajectory()
+        x = self.get_predicted_state_trajectory()
+        u = self.get_predicted_control_trajectory()
 
-        fig, ax = plt.subplots(
-            self._ocp.dims.nx + self._ocp.dims.nu, 1, figsize=(10, 7)
-        )
+        _, ax = plt.subplots(self.ocp.dims.nx + self.ocp.dims.nu, 1, figsize=(10, 7))
 
-        for i in range(self._ocp.dims.nx):
+        for i in range(self.ocp.dims.nx):
             ax[i].plot(x[:, i], "-o")
             ax[i].grid(True)
             ax[i].set_ylabel(f"x_{i}")
 
         # Make a stairs plot for u
-        ax[self._ocp.dims.nx].step(np.arange(0, u.shape[0]), u.flatten(), where="post")
-        ax[self._ocp.dims.nx].grid(True)
-        ax[self._ocp.dims.nx].set_ylabel("u")
+        ax[self.ocp.dims.nx].step(np.arange(0, u.shape[0]), u.flatten(), where="post")
+        ax[self.ocp.dims.nx].grid(True)
+        ax[self.ocp.dims.nx].set_ylabel("u")
 
         plt.show()
 

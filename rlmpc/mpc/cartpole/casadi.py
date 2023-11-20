@@ -492,7 +492,6 @@ def define_terminal_cost_function(ocp: CasadiOcp) -> cs.Function:
 
 
 def build_nlp_solver(ocp: CasadiOcp) -> cs.nlpsol:
-    # F = define_discrete_dynamics_function(model=model, h=h, ocp_options=ocp.solver_options)
     F = define_discrete_dynamics_function(ocp)
 
     constraints = ocp.constraints
@@ -506,7 +505,7 @@ def build_nlp_solver(ocp: CasadiOcp) -> cs.nlpsol:
     w0 = []
     lbw = []
     ubw = []
-    J = 0
+    cost = 0
     g = []
     lbg = []
     ubg = []
@@ -537,7 +536,7 @@ def build_nlp_solver(ocp: CasadiOcp) -> cs.nlpsol:
         ubw += constraints.ubu.tolist()
         w0 += [0]
 
-        J = J + stage_cost_function(xk, uk)
+        cost = cost + stage_cost_function(xk, uk)
 
         # Integrate till the end of the interval
         xk_end = F(xk, uk, p)
@@ -555,10 +554,10 @@ def build_nlp_solver(ocp: CasadiOcp) -> cs.nlpsol:
         ubg += np.zeros((ocp.dims.nx,)).tolist()
 
     # Add terminal cost
-    J = J + terminal_cost_function(xk_end)
+    cost = cost + terminal_cost_function(xk_end)
 
     # NLP
-    prob = {"f": J, "x": cs.vertcat(*w), "g": cs.vertcat(*g), "p": p}
+    prob = {"f": cost, "x": cs.vertcat(*w), "g": cs.vertcat(*g), "p": p}
 
     # Create an NLP solver
     solver = cs.nlpsol("solver", "ipopt", prob)
@@ -568,6 +567,10 @@ def build_nlp_solver(ocp: CasadiOcp) -> cs.nlpsol:
 
 class CasadiMPC(MPC):
     """docstring for CartpoleMPC."""
+
+    ocp: CasadiOcp
+    ocp_solver: CasadiOcpSolver
+    parameter_values: np.ndarray
 
     parameter_values: np.ndarray
 
@@ -595,9 +598,47 @@ class CasadiMPC(MPC):
         for stage_ in range(self.ocp.dims.N):
             self.ocp_solver.set(stage_, "p", self.ocp.parameter_values)
 
-        # _ = self.ocp_solver.solve(
-        #     x0=self.ocp.constraints.x0, p=self.ocp.parameter_values
-        # )
+    def get_parameters(self) -> np.ndarray:
+        return self.parameter_values
+
+    def scale_action(self, action: np.ndarray) -> np.ndarray:
+        """
+        Rescale the action from [low, high] to [-1, 1]
+        (no need for symmetric action space)
+
+        :param action: Action to scale
+        :return: Scaled action
+        """
+        low = self.ocp.constraints.lbu
+        high = self.ocp.constraints.ubu
+
+        return 2.0 * ((action - low) / (high - low)) - 1.0
+
+    def get_action(self, x0: np.ndarray) -> np.ndarray:
+        """
+        Update the solution of the OCP solver.
+
+        Args:
+            x0: Initial state.
+
+        Returns:
+            action: Scaled optimal control action.
+        """
+
+        # Set initial state
+        self.ocp_solver.constraints_set(0, "lbx", x0)
+        self.ocp_solver.constraints_set(0, "ubx", x0)
+
+        # Solve the optimization problem
+        self.ocp_solver.solve()
+
+        # Get solution
+        action = self.ocp_solver.get(0, "u")
+
+        # Scale to [-1, 1] for gym
+        action = self.scale_action(action)
+
+        return action
 
     def plot_solution(self) -> (plt.figure, plt.axes):
         X = np.vstack(
@@ -622,51 +663,3 @@ class CasadiMPC(MPC):
         axes[-1].set_xlabel("Step [-]")
 
         return (fig, axes)
-
-    def get_parameters(self) -> np.ndarray:
-        return self.parameter_values
-
-    def scale_action(self, action: np.ndarray) -> np.ndarray:
-        """
-        Rescale the action from [low, high] to [-1, 1]
-        (no need for symmetric action space)
-
-        :param action: Action to scale
-        :return: Scaled action
-        """
-        low, high = self.action_space.low, self.action_space.high
-        return 2.0 * ((action - low) / (high - low)) - 1.0
-
-    def get_action(self, x0: np.ndarray) -> np.ndarray:
-        """
-        Update the solution of the OCP solver.
-
-        Args:
-            x0: Initial state.
-
-        Returns:
-            u: Optimal control action.
-        """
-
-        # Set initial state
-        self.ocp_solver.constraints_set(0, "lbx", x0)
-        self.ocp_solver.constraints_set(0, "ubx", x0)
-        # self.ocp_solver.set(0, "x", x0)
-
-        # Solve the optimization problem
-        self.ocp_solver.solve()
-
-        # Get solution
-        u = self.ocp_solver.get(0, "u")
-
-        # Scale to [-1, 1] for gym
-        action = (
-            2.0
-            * (
-                (u - self.ocp.constraints.lbu)
-                / (self.ocp.constraints.ubu - self.ocp.constraints.lbu)
-            )
-            - 1.0
-        )
-
-        return action
