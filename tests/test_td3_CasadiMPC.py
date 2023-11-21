@@ -1,5 +1,5 @@
 from external.stable_baselines3.stable_baselines3.td3 import TD3
-from rlmpc.td3.policies import Actor, MPCTD3Policy
+from rlmpc.td3.policies import MPCTD3Policy
 
 import gymnasium as gym
 from rlmpc.common.utils import read_config
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     obs = vec_env.reset()
 
-    while True:
+    for _ in range(100):
         action, _ = model.predict(obs)
         obs, rewards, dones, info = vec_env.step(action)
         vec_env.render("human")

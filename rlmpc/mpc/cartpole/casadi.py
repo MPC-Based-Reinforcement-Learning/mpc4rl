@@ -84,6 +84,7 @@ class CasadiOcpSolver:
 
     ocp: CasadiOcp
     p: np.ndarray
+    nlp_solution: dict
 
     # Use generate and build mehods to implement jit compilation
     @classmethod
@@ -112,25 +113,7 @@ class CasadiOcpSolver:
             self.ubg,
         ) = build_nlp_solver(self.ocp)
 
-        # self._model = define_model_expressions(config=config)
-
-        # self._cost = define_cost(config=config)
-
-        # self._constraints = define_constraints(config=config)
-
-    # def set(self, stage: int, field: str, value: np.ndarray) -> None:
-    #     """
-
-    #     The following is a modified implementation of parts of acados_template/acados_ocp_solver.py
-
-    #     Set a field of the OCP solver.
-
-    #     Args:
-    #         stage: Stage index.
-    #         field: Field name.
-    #         value: Field value.
-    #     """
-    #     raise NotImplementedError()
+        self.nlp_solution = None
 
     def set(self, stage_, field_, value_):
         """
@@ -298,6 +281,13 @@ class CasadiOcpSolver:
                 f"CasadiOcpSolver.get(stage={stage_}, field={field_}): stage index must be an integer, got type {type(stage_)}."
             )
 
+        # Check if self.nlp_solution is NoneType
+        if self.nlp_solution is None:
+            raise Exception(
+                f"CasadiOcpSolver.get(stage={stage_}, field={field_}): self.nlp_solution is NoneType.\
+                    \n Please run self.solve() first."
+            )
+
         if stage_ < 0 or stage_ > self.ocp.dims.N:
             raise Exception(
                 f"AcadosOcpSolver.get(stage={stage_}, field={field_}): stage index must be in [0, {self.ocp.dims.N}], got: {stage_}."
@@ -315,6 +305,14 @@ class CasadiOcpSolver:
             return self.nlp_solution["x"][start_idx:end_idx].full().flatten()
 
         if field_ == "u":
+            start_idx = (
+                stage_ * (self.ocp.dims.nx + self.ocp.dims.nu) + self.ocp.dims.nx
+            )
+            end_idx = start_idx + self.ocp.dims.nu
+
+            return self.nlp_solution["x"][start_idx:end_idx].full().flatten()
+
+        if field_ == "s":
             start_idx = (
                 stage_ * (self.ocp.dims.nx + self.ocp.dims.nu) + self.ocp.dims.nx
             )
@@ -556,13 +554,29 @@ def build_nlp_solver(ocp: CasadiOcp) -> cs.nlpsol:
     # Add terminal cost
     cost = cost + terminal_cost_function(xk_end)
 
-    # NLP
+    # Problem
     prob = {"f": cost, "x": cs.vertcat(*w), "g": cs.vertcat(*g), "p": p}
 
     # Create an NLP solver
     solver = cs.nlpsol("solver", "ipopt", prob)
 
     return solver, w0, lbw, ubw, lbg, ubg
+
+
+def build_KKT_residual_function(ocp: CasadiOcp) -> cs.Function:
+    pass
+
+
+def build_policy_gradient_function(ocp: CasadiOcp) -> cs.Function:
+    pass
+
+
+def build_state_action_value_function(ocp: CasadiOcp) -> cs.Function:
+    pass
+
+
+def build_state_value_function(ocp: CasadiOcp) -> cs.Function:
+    pass
 
 
 class CasadiMPC(MPC):
@@ -595,6 +609,7 @@ class CasadiMPC(MPC):
 
         self.parameter_values = self.ocp.parameter_values
 
+        # TODO: At the moment we only support one parameter for all stages. Add support for stage-wise parameters.
         for stage_ in range(self.ocp.dims.N):
             self.ocp_solver.set(stage_, "p", self.ocp.parameter_values)
 
