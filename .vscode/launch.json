@@ -8,15 +8,24 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: RLMPC",
+            "type": "python",
+            "request": "launch",
             // "program": "${workspaceFolder}/tests/test_gym_continuous_cartpole_swingup.py",
             // "program": "${workspaceFolder}/tests/test_mpc_gym_cartpole.py",
             // "program": "${workspaceFolder}/tests/test_td3_interface.py",
             // "program": "${file}",
             // "program": "${workspaceFolder}/tests/test_td3_mpc_acados.py",
             "program": "${workspaceFolder}/tests/test_td3_CasadiMPC.py",
+            // "program": "${workspaceFolder}/tests/test_CasadiMPC_sensitivities.py",
             // "program": "${workspaceFolder}/tests/test_td3_AcadosMPC.py",
             "console": "integratedTerminal",
             "justMyCode": true
-        }
+        },
     ]
 }

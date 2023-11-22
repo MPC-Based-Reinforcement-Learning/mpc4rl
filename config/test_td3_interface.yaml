@@ -52,6 +52,7 @@ mpc:
     lbx: [-2.4, -10.0, -6.28, -10.0]
     ubx: [2.4, 10.0, +6.28, 10.0]
     idxbx: [0, 1, 2, 3]
+    idxsbx: [2, 3]
 
 environment:
   id: ContinuousCartPoleSwingUpEnv-v0
