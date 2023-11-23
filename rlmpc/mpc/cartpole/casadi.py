@@ -699,6 +699,35 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     # slack_labels["Slbu"] = [control_labels[idx] for idx in constraints.idxsbu]
     # slack_labels["Subu"] = [control_labels[idx] for idx in constraints.idxsbu]
 
+    S = struct_symSX(
+        [
+            (
+                entry(
+                    "Slbx",
+                    repeat=1,
+                    struct=struct_symSX(slack_labels["Slbx"]),
+                ),
+                # entry(
+                #     "Slbu",
+                #     repeat=ocp.dims.N - 1,
+                #     struct=struct_symSX(slack_labels["Slbu"]),
+                # ),
+                # entry("Slh", struct=struct_symSX([])),
+                entry(
+                    "Subx",
+                    repeat=1,
+                    struct=struct_symSX(slack_labels["Subx"]),
+                ),
+                # entry(
+                #     "Subu",
+                #     repeat=ocp.dims.N - 1,
+                #     struct=struct_symSX(slack_labels["Subu"]),
+                # ),
+                # entry("Suh", struct=struct_symSX([])),
+            )
+        ]
+    )
+
     w = struct_symSX(
         [
             (
@@ -715,21 +744,26 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
                 # entry("S", repeat=ocp.dims.N, struct=struct_symSX(slack_labels)),
                 # entry("S", repeat=ocp.dims.N, struct=S),
                 entry(
-                    "Slbx",
+                    "S",
                     repeat=ocp.dims.N,
-                    struct=struct_symSX(slack_labels["Slbx"]),
-                ),
+                    struct=S,
+                )
+                # entry(
+                #     "Slbx",
+                #     repeat=ocp.dims.N,
+                #     struct=struct_symSX(slack_labels["Slbx"]),
+                # ),
                 # entry(
                 #     "Slbu",
                 #     repeat=ocp.dims.N - 1,
                 #     struct=struct_symSX(slack_labels["Slbu"]),
                 # ),
                 # entry("Slh", struct=struct_symSX([])),
-                entry(
-                    "Subx",
-                    repeat=ocp.dims.N,
-                    struct=struct_symSX(slack_labels["Subx"]),
-                ),
+                # entry(
+                #     "Subx",
+                #     repeat=ocp.dims.N,
+                #     struct=struct_symSX(slack_labels["Subx"]),
+                # ),
                 # entry(
                 #     "Subu",
                 #     repeat=ocp.dims.N - 1,
@@ -739,6 +773,8 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
             )
         ]
     )
+
+    w.labels()
 
     # Index of box constraints
     idxbx = constraints.idxbx
@@ -759,22 +795,29 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     ubu = [constraints.ubu[i] if i in idxhbu else np.inf for i in range(ocp.dims.nu)]
 
     # Soft box constraints
-    lsbx = constraints.lbx[constraints.idxsbx]
-    lsbu = constraints.lbu[constraints.idxsbu]
-    usbx = constraints.ubx[constraints.idxsbx]
-    usbu = constraints.ubu[constraints.idxsbu]
+    lsbx = constraints.lbx[idxsbx]
+    # lsbu = constraints.lbu[idxsbu]
+    usbx = constraints.ubx[idxsbx]
+    # usbu = constraints.ubu[idxsbu]
 
     lbw = w(0)
     lbw["X", lambda x: cs.vertcat(*x)] = np.tile(lbx, (1, ocp.dims.N))
     lbw["U", lambda x: cs.vertcat(*x)] = np.tile(lbu, (1, ocp.dims.N - 1))
-    lbw["Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
-    lbw["Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+
+    for stage_ in range(ocp.dims.N):
+        lbw["S", stage_, "Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, 1))
+        lbw["S", stage_, "Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, 1))
+    # lbw["S", lambda x: cs.vertcat(*x), "Slbx"] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+    # lbw["S", lambda x: cs.vertcat(*x), "Subx"] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
 
     ubw = w(0)
     ubw["X", lambda x: cs.vertcat(*x)] = np.tile(ubx, (1, ocp.dims.N))
     ubw["U", lambda x: cs.vertcat(*x)] = np.tile(ubu, (1, ocp.dims.N - 1))
-    ubw["Slbx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, ocp.dims.N))
-    ubw["Subx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, ocp.dims.N))
+    # ubw["Slbx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, ocp.dims.N))
+    # ubw["Subx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, ocp.dims.N))
+    for stage_ in range(ocp.dims.N):
+        ubw["S", stage_, "Slbx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, 1))
+        ubw["S", stage_, "Subx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, 1))
 
     x0 = ocp.constraints.lbx_0.tolist()
     u0 = 0
@@ -782,8 +825,11 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     w0 = w(0)
     w0["X", lambda x: cs.vertcat(*x)] = np.tile(x0, (1, ocp.dims.N))
     w0["U", lambda x: cs.vertcat(*x)] = np.tile(u0, (1, ocp.dims.N - 1))
-    w0["Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
-    w0["Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+    # w0["Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+    # w0["Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+    for stage_ in range(ocp.dims.N):
+        w0["S", stage_, "Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, 1))
+        w0["S", stage_, "Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, 1))
 
     # Parameter vector
     # TODO: Add support for multivariable parameters
@@ -795,23 +841,23 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     ubg = []
 
     # Alias for the states, control, and slack variables
-    (X, U, Slbx, Subx) = w[...]
+    (X, U, _) = w[...]
 
     # S = cs.vertcat(Sl, Su)
 
-    for i in range(ocp.dims.N - 1):
+    for stage_ in range(ocp.dims.N - 1):
         # Add dynamics constraints
-        g.append(X[i + 1] - phi(X[i], U[i], p))
+        g.append(w["X", stage_ + 1] - phi(w["X", stage_], w["U", stage_], p))
         lbg.append([0 for _ in range(ocp.dims.nx)])
         ubg.append([0 for _ in range(ocp.dims.nx)])
 
         # Add relaxed box constraints for lower bounds
-        g.append(lsbx - X[i][idxsbx] - Slbx[i])
+        g.append(lsbx - w["X", stage_][idxsbx] - w["S", stage_, "Slbx", 0])
         lbg.append([-cs.inf for _ in idxsbx])
         ubg.append([0 for _ in idxsbx])
 
         # Add relaxed box constraints for upper bounds
-        g.append(-usbx + X[i][idxsbx] - Subx[i])
+        g.append(-usbx + w["X", stage_][idxsbx] - w["S", stage_, "Subx", 0])
         lbg.append([-cs.inf for _ in idxsbx])
         ubg.append([0 for _ in idxsbx])
 
@@ -847,16 +893,16 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     )
 
     # TODO: Add other slack variables, e.g. Slbu, Subu, Slh, Suh etc., as needed/implemented later.
-    Sl = Slbx
-    Su = Subx
+    # Sl = Slbx
+    # Su = Subx
 
     cost = 0
     # Build the cost function
-    for i in range(ocp.dims.N - 1):
-        cost += stage_cost_function(X[i], U[i], Sl[i], Su[i])
+    for stage_ in range(ocp.dims.N - 1):
+        cost += stage_cost_function(w["X", stage_], w["U", stage_], w["S", stage_, "Slbx", 0], w["S", stage_, "Slbx", 0])
 
     # Add terminal cost
-    cost += terminal_cost_function(X[ocp.dims.N - 1], Sl[ocp.dims.N - 1], Su[ocp.dims.N - 1])
+    cost += terminal_cost_function(w["X", stage_], w["S", stage_, "Slbx", 0], w["S", stage_, "Slbx", 0])
 
     nlp = CasadiNLP()
     nlp.cost = cost
@@ -869,6 +915,35 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     nlp.ubg = ubg
     nlp.p = p
     nlp.f_disc = phi
+
+    ############################## Build the NLP sensitivities #####################################
+    # Move this part to a separate function alter when it is working
+
+    # Define the Lagrange multipliers
+    # lam_g = cs.SX.sym("lam_g", nlp.g.shape)
+    # lam_x = cs.SX.sym("lam_x", nlp.lbw.shape)
+
+    # N g per stage
+
+    multipliers = struct_symSX(
+        [
+            (
+                entry(
+                    "lam_g",
+                    repeat=ocp.dims.N - 1,
+                    struct=struct_symSX(["g", "lbg", "ubg"]),
+                ),
+                entry(
+                    "lam_x",
+                    repeat=ocp.dims.N,
+                    struct=struct_symSX(["X", "lbw", "ubw"]),
+                ),
+            )
+        ]
+    )
+
+    # Define the Lagrangian
+    # L = cost + cs.mtimes([lam_g.T, g])
 
     return nlp
 
