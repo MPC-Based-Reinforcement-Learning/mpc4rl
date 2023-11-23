@@ -675,6 +675,17 @@ def define_terminal_cost_function(
 
 
 def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
+    """
+    Build the NLP for the OCP.
+
+    TODO: Add support for other cost types
+    TODO: Adapt to SX/MX depending on the provided model
+    TODO: Add support for different parameters at each stage
+    TODO: Add support for varying/learning reference trajectories, i.e. set as parameters
+    TODO: Add support for varying/learning cost weights, i.e. set as parameters
+    TODO: Add support for varying/learning constraints, i.e. set as parameters
+    """
+
     phi = define_discrete_dynamics_function(ocp)
 
     constraints = ocp.constraints
@@ -729,17 +740,29 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
         ]
     )
 
-    # Index of hard constraints
-    idxhbx = [idx for idx in constraints.idxbx if idx not in constraints.idxsbx]
-    idxhbu = [idx for idx in constraints.idxbu if idx not in constraints.idxsbu]
+    # Index of box constraints
+    idxbx = constraints.idxbx
+    idxbu = constraints.idxbu
 
-    # State box constraints
+    # Index of soft box constraints
+    idxsbx = constraints.idxsbx
+    idxsbu = constraints.idxsbu
+
+    # Index of hard box constraints
+    idxhbx = [idx for idx in idxbx if idx not in idxsbx]
+    idxhbu = [idx for idx in idxbu if idx not in idxsbu]
+
+    # Hard box constraints
     lbx = [constraints.lbx[i] if i in idxhbx else -np.inf for i in range(ocp.dims.nx)]
-    ubx = [constraints.ubx[i] if i in idxhbx else np.inf for i in range(ocp.dims.nx)]
-
-    # Control box constraints
     lbu = [constraints.lbu[i] if i in idxhbu else -np.inf for i in range(ocp.dims.nu)]
+    ubx = [constraints.ubx[i] if i in idxhbx else np.inf for i in range(ocp.dims.nx)]
     ubu = [constraints.ubu[i] if i in idxhbu else np.inf for i in range(ocp.dims.nu)]
+
+    # Soft box constraints
+    lsbx = constraints.lbx[constraints.idxsbx]
+    lsbu = constraints.lbu[constraints.idxsbu]
+    usbx = constraints.ubx[constraints.idxsbx]
+    usbu = constraints.ubu[constraints.idxsbu]
 
     lbw = w(0)
     lbw["X", lambda x: cs.vertcat(*x)] = np.tile(lbx, (1, ocp.dims.N))
@@ -771,7 +794,7 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
     lbg = []
     ubg = []
 
-    # (x, u, s) = w[...]
+    # Alias for the states, control, and slack variables
     (X, U, Slbx, Subx) = w[...]
 
     # S = cs.vertcat(Sl, Su)
@@ -783,27 +806,24 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
         ubg.append([0 for _ in range(ocp.dims.nx)])
 
         # Add relaxed box constraints for lower bounds
-        g.append(constraints.lbx[constraints.idxsbx] - X[i][constraints.idxsbx] - Slbx[i])
-        lbg.append([-cs.inf for _ in constraints.idxsbx])
-        ubg.append([0 for _ in constraints.idxsbx])
+        g.append(lsbx - X[i][idxsbx] - Slbx[i])
+        lbg.append([-cs.inf for _ in idxsbx])
+        ubg.append([0 for _ in idxsbx])
 
         # Add relaxed box constraints for upper bounds
-        g.append(-constraints.ubx[constraints.idxsbx] + X[i][constraints.idxsbx] - Subx[i])
-        lbg.append([-cs.inf for _ in constraints.idxsbx])
-        ubg.append([0 for _ in constraints.idxsbx])
+        g.append(-usbx + X[i][idxsbx] - Subx[i])
+        lbg.append([-cs.inf for _ in idxsbx])
+        ubg.append([0 for _ in idxsbx])
 
     g = cs.vertcat(*g)
     lbg = cs.vertcat(*lbg)
     ubg = cs.vertcat(*ubg)
 
-    Sl = Slbx
-    Su = Subx
-
     stage_cost_function = define_stage_cost_function(
         x=ocp.model.x,
         u=ocp.model.u,
-        sl=cs.SX.sym("sl", constraints.idxsbx.shape[0]),
-        su=cs.SX.sym("su", constraints.idxsbx.shape[0]),
+        sl=cs.SX.sym("sl", idxsbx.shape[0]),
+        su=cs.SX.sym("su", idxsbx.shape[0]),
         yref=ocp.cost.yref,
         W=ocp.cost.W,
         Zl=ocp.cost.Zl,
@@ -815,8 +835,8 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
 
     terminal_cost_function = define_terminal_cost_function(
         x_e=ocp.model.x,
-        sl_e=cs.SX.sym("sl_e", constraints.idxsbx.shape[0]),
-        su_e=cs.SX.sym("su_e", constraints.idxsbx.shape[0]),
+        sl_e=cs.SX.sym("sl_e", idxsbx.shape[0]),
+        su_e=cs.SX.sym("su_e", idxsbx.shape[0]),
         yref_e=ocp.cost.yref_e,
         W_e=ocp.cost.W_e,
         Zl_e=ocp.cost.Zl_e,
@@ -825,6 +845,10 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
         zu_e=ocp.cost.zu_e,
         cost=ocp.cost,
     )
+
+    # TODO: Add other slack variables, e.g. Slbu, Subu, Slh, Suh etc., as needed/implemented later.
+    Sl = Slbx
+    Su = Subx
 
     cost = 0
     # Build the cost function
