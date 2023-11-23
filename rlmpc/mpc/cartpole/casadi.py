@@ -729,13 +729,17 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
         ]
     )
 
+    # Index of hard constraints
+    idxhbx = [idx for idx in constraints.idxbx if idx not in constraints.idxsbx]
+    idxhbu = [idx for idx in constraints.idxbu if idx not in constraints.idxsbu]
+
     # State box constraints
-    lbx = [constraints.lbx[i] if i in constraints.idxbx else -np.inf for i in range(ocp.dims.nx)]
-    ubx = [constraints.ubx[i] if i in constraints.idxbx else np.inf for i in range(ocp.dims.nx)]
+    lbx = [constraints.lbx[i] if i in idxhbx else -np.inf for i in range(ocp.dims.nx)]
+    ubx = [constraints.ubx[i] if i in idxhbx else np.inf for i in range(ocp.dims.nx)]
 
     # Control box constraints
-    lbu = [constraints.lbu[i] if i in constraints.idxbu else -np.inf for i in range(ocp.dims.nu)]
-    ubu = [constraints.ubu[i] if i in constraints.idxbu else np.inf for i in range(ocp.dims.nu)]
+    lbu = [constraints.lbu[i] if i in idxhbu else -np.inf for i in range(ocp.dims.nu)]
+    ubu = [constraints.ubu[i] if i in idxhbu else np.inf for i in range(ocp.dims.nu)]
 
     lbw = w(0)
     lbw["X", lambda x: cs.vertcat(*x)] = np.tile(lbx, (1, ocp.dims.N))

@@ -56,12 +56,10 @@ mpc:
     ubu: [30.0] # upper bound of control input
     idxbu: [0]
     idxsbu: []
-    # lbx: [-2.4, -10.0, -.inf, -10.0]
-    # ubx: [2.4, 10.0, +.inf, 10.0]
     lbx: [-2.4, -10.0, -6.28, -10.0]
     ubx: [2.4, 10.0, +6.28, 10.0]
     idxbx_0: [0, 1, 2, 3]
-    idxbx: [0, 1]
+    idxbx: [0, 1, 2, 3]
     idxsbx: [2, 3]
 
 environment:
