@@ -133,9 +133,7 @@ def get_Jbx(ocp: CasadiOcp) -> np.ndarray:
     # for k, idx in enumerate(ocp.constraints.idxbx):
     #     Jbx[k, idx] = 1
     # return Jbx
-    return idx_to_J(
-        (ocp.constraints.idxbx.shape[0], ocp.dims.nx), ocp.constraints.idxbx
-    )
+    return idx_to_J((ocp.constraints.idxbx.shape[0], ocp.dims.nx), ocp.constraints.idxbx)
 
 
 def get_Jbu(ocp: CasadiOcp) -> np.ndarray:
@@ -143,9 +141,7 @@ def get_Jbu(ocp: CasadiOcp) -> np.ndarray:
     # for k, idx in enumerate(ocp.constraints.idxbu):
     #     Jbu[k, idx] = 1
     # return Jbu
-    return idx_to_J(
-        (ocp.constraints.idxbu.shape[0], ocp.dims.nu), ocp.constraints.idxbu
-    )
+    return idx_to_J((ocp.constraints.idxbu.shape[0], ocp.dims.nu), ocp.constraints.idxbu)
 
 
 def get_Jsbx(ocp: CasadiOcp) -> np.ndarray:
@@ -153,9 +149,7 @@ def get_Jsbx(ocp: CasadiOcp) -> np.ndarray:
     # for k, idx in enumerate(ocp.constraints.idxsbx):
     #     Jsbx[k, idx] = 1
     # return Jsbx
-    return idx_to_J(
-        (ocp.constraints.idxsbx.shape[0], ocp.dims.nx), ocp.constraints.idxsbx
-    )
+    return idx_to_J((ocp.constraints.idxsbx.shape[0], ocp.dims.nx), ocp.constraints.idxsbx)
 
 
 def get_Jsbu(ocp: CasadiOcp) -> np.ndarray:
@@ -163,9 +157,7 @@ def get_Jsbu(ocp: CasadiOcp) -> np.ndarray:
     # for k, idx in enumerate(ocp.constraints.idxsbu):
     #     Jsbu[k, idx] = 1
     # return Jsbu
-    return idx_to_J(
-        (ocp.constraints.idxsbu.shape[0], ocp.dims.nu), ocp.constraints.idxsbu
-    )
+    return idx_to_J((ocp.constraints.idxsbu.shape[0], ocp.dims.nu), ocp.constraints.idxsbu)
 
 
 class CasadiOcpSolver:
@@ -227,9 +219,7 @@ class CasadiOcpSolver:
 
             fig, axes = plt.subplots(5, 1, figsize=(10, 10))
             for k, ax in enumerate(axes):
-                ax.plot(
-                    x_opt[k :: (self.ocp.dims.nx + self.ocp.dims.nu)].full().flatten()
-                )
+                ax.plot(x_opt[k :: (self.ocp.dims.nx + self.ocp.dims.nu)].full().flatten())
 
             plt.show()
 
@@ -520,9 +510,7 @@ def build_discrete_dynamics_functions(
     if ocp_options.integrator_type == "ERK" and ocp_options.sim_method_num_stages == 4:
         xf = ERK4(f, x, u, p, h)
     else:
-        raise NotImplementedError(
-            "Only ERK4 integrator types are supported at the moment."
-        )
+        raise NotImplementedError("Only ERK4 integrator types are supported at the moment.")
 
     # Integrator function.
     # fun_f = cs.Function("f", [x, u, p], [xf], ["x", "u", "p"], ["xf"])
@@ -558,57 +546,132 @@ def define_discrete_dynamics_function(ocp: CasadiOcp) -> cs.Function:
 
         return cs.Function("F", [x, u, p], [xnext])
     else:
-        raise NotImplementedError(
-            "Only ERK integrator types are supported at the moment."
-        )
+        raise NotImplementedError("Only ERK integrator types are supported at the moment.")
 
 
-def define_stage_cost_function(ocp: CasadiOcp) -> cs.Function:
-    model = ocp.model
-    cost = ocp.cost
+# def define_stage_cost_function(ocp: CasadiOcp) -> cs.Function:
+#     model = ocp.model
+#     cost = ocp.cost
 
-    # TODO: Add support for other cost types
-    # TODO: Add yref as a parameter
+#     # TODO: Add support for other cost types
+#     # TODO: Add yref as a parameter
+#     if cost.cost_type == "LINEAR_LS":
+#         Vx = cost.Vx
+#         Vu = cost.Vu
+#         yref = cost.yref.reshape(-1, 1)
+#         # W = cost.W
+
+#         x = model.x
+#         u = model.u
+#         y = cs.mtimes([Vx, x]) + cs.mtimes([Vu, u])
+
+#         cost = 0
+#         cost += cs.mtimes([(y - yref).T, cost.W, (y - yref)])
+#         cost +=
+
+#         # stage_cost_function = cs.Function(
+#         #     "stage_cost",
+#         #     [x, u, sl, su],
+#         #     [cs.mtimes([(y - yref).T, W, (y - yref)])],
+#         # )
+
+#         return stage_cost_function
+
+
+def define_stage_cost_function(
+    x: cs.SX,
+    u: cs.SX,
+    sl: cs.SX,
+    su: cs.SX,
+    yref: cs.SX,
+    W: np.ndarray,
+    Zl: np.ndarray,
+    Zu: np.ndarray,
+    zl: np.ndarray,
+    zu: np.ndarray,
+    cost: CasadiOcpCost,
+) -> cs.SX:
     if cost.cost_type == "LINEAR_LS":
-        Vx = cost.Vx
-        Vu = cost.Vu
-        yref = cost.yref.reshape(-1, 1)
-        W = cost.W
+        y = cs.mtimes([cost.Vx, x]) + cs.mtimes([cost.Vu, u])
 
-        x = model.x
-        u = model.u
-        y = cs.mtimes([Vx, x]) + cs.mtimes([Vu, u])
+        cost = 0
+        cost += cs.mtimes([(y - yref).T, W, (y - yref)])
+        cost += cs.mtimes([sl.T, Zl, sl])
+        cost += cs.mtimes([su.T, Zu, su])
+        cost += cs.mtimes([sl.T, zl])
+        cost += cs.mtimes([su.T, zu])
 
-        stage_cost_function = cs.Function(
-            "stage_cost",
-            [x, u],
-            [cs.mtimes([(y - yref).T, W, (y - yref)])],
+        stage_cost = cs.Function(
+            "l",
+            # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
+            [x, u, sl, su],
+            [cost],
+            ["x", "u", "sl", "su"],
+            ["out"],
         )
 
-        return stage_cost_function
+        return stage_cost
+    else:
+        raise NotImplementedError("Only LINEAR_LS cost types are supported at the moment.")
 
 
-def define_terminal_cost_function(ocp: CasadiOcp) -> cs.Function:
-    model = ocp.model
-    cost = ocp.cost
+# def define_terminal_cost_function(ocp: CasadiOcp) -> cs.Function:
+#     model = ocp.model
+#     cost = ocp.cost
 
-    # TODO: Add support for other cost types
-    # TODO: Add yref as a parameter
+#     # TODO: Add support for other cost types
+#     # TODO: Add yref as a parameter
+#     if cost.cost_type == "LINEAR_LS":
+#         Vx_e = cost.Vx_e
+#         yref_e = cost.yref_e.reshape(-1, 1)
+#         W_e = cost.W_e
+
+#         x = model.x
+#         y_e = cs.mtimes([Vx_e, x])
+
+#         terminal_cost_function = cs.Function(
+#             "stage_cost",
+#             [x],
+#             [cs.mtimes([(y_e - yref_e).T, W_e, (y_e - yref_e)])],
+#         )
+
+#         return terminal_cost_function
+
+
+def define_terminal_cost_function(
+    x_e: cs.SX,
+    sl_e: cs.SX,
+    su_e: cs.SX,
+    yref_e: cs.SX,
+    W_e: np.ndarray,
+    Zl_e: np.ndarray,
+    Zu_e: np.ndarray,
+    zl_e: np.ndarray,
+    zu_e: np.ndarray,
+    cost: CasadiOcpCost,
+) -> cs.SX:
     if cost.cost_type == "LINEAR_LS":
-        Vx_e = cost.Vx_e
-        yref_e = cost.yref_e.reshape(-1, 1)
-        W_e = cost.W_e
+        y_e = cs.mtimes([cost.Vx_e, x_e])
 
-        x = model.x
-        y_e = cs.mtimes([Vx_e, x])
+        cost = 0
+        cost += cs.mtimes([(y_e - yref_e).T, W_e, (y_e - yref_e)])
+        cost += cs.mtimes([sl_e.T, Zl_e, sl_e])
+        cost += cs.mtimes([su_e.T, Zu_e, su_e])
+        cost += cs.mtimes([sl_e.T, zl_e])
+        cost += cs.mtimes([su_e.T, zu_e])
 
-        terminal_cost_function = cs.Function(
-            "stage_cost",
-            [x],
-            [cs.mtimes([(y_e - yref_e).T, W_e, (y_e - yref_e)])],
+        terminal_cost = cs.Function(
+            "m",
+            # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
+            [x_e, sl_e, su_e],
+            [cost],
+            ["x_e", "sl_e", "su_e"],
+            ["out"],
         )
 
-        return terminal_cost_function
+        return terminal_cost
+    else:
+        raise NotImplementedError("Only LINEAR_LS cost types are supported at the moment.")
 
 
 def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
@@ -616,208 +679,164 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> CasadiNLP:
 
     constraints = ocp.constraints
 
-    stage_cost_function = define_stage_cost_function(ocp)
+    state_labels = ocp.model.x.str().strip("[]").split(", ")
+    control_labels = ocp.model.u.str().strip("[]").split(", ")
 
-    terminal_cost_function = define_terminal_cost_function(ocp)
+    slack_labels = dict()
+    slack_labels["Slbx"] = [state_labels[idx] for idx in constraints.idxsbx]
+    slack_labels["Subx"] = [state_labels[idx] for idx in constraints.idxsbx]
+    # slack_labels["Slbu"] = [control_labels[idx] for idx in constraints.idxsbu]
+    # slack_labels["Subu"] = [control_labels[idx] for idx in constraints.idxsbu]
 
-    Jbx0 = np.identity(ocp.dims.nx)
-    Jbx = get_Jbx(ocp)
-    Jbu = get_Jbu(ocp)
-    Jsbx = get_Jsbx(ocp)
-    Jsbu = get_Jsbu(ocp)
-
-    # Start with an empty NLP
-    w = []
-    w0 = []
-    lbw = []
-    ubw = []
-    cost = 0
-
-    h = []  # Inequality constraints
-    g = []  # Equality constraints
-
-    lbg = []
-    ubg = []
-
-    lbx = []
-    ubx = []
-
-    lbu = []
-    ubu = []
-
-    lbh = []
-    ubh = []
-
-    xout = []
-    uout = []
-
-    states = struct_symSX(ocp.model.x.str().strip("[]").split(", "))
-    controls = struct_symSX(ocp.model.u.str().strip("[]").split(", "))
-
-    shooting = struct_symSX(
+    w = struct_symSX(
         [
             (
                 entry(
                     "X",
                     repeat=ocp.dims.N,
-                    struct=states,
+                    struct=struct_symSX(state_labels),
                 ),
-                entry("U", repeat=ocp.dims.N - 1, struct=controls),
+                entry(
+                    "U",
+                    repeat=ocp.dims.N - 1,
+                    struct=struct_symSX(control_labels),
+                ),
+                # entry("S", repeat=ocp.dims.N, struct=struct_symSX(slack_labels)),
+                # entry("S", repeat=ocp.dims.N, struct=S),
+                entry(
+                    "Slbx",
+                    repeat=ocp.dims.N,
+                    struct=struct_symSX(slack_labels["Slbx"]),
+                ),
+                # entry(
+                #     "Slbu",
+                #     repeat=ocp.dims.N - 1,
+                #     struct=struct_symSX(slack_labels["Slbu"]),
+                # ),
+                # entry("Slh", struct=struct_symSX([])),
+                entry(
+                    "Subx",
+                    repeat=ocp.dims.N,
+                    struct=struct_symSX(slack_labels["Subx"]),
+                ),
+                # entry(
+                #     "Subu",
+                #     repeat=ocp.dims.N - 1,
+                #     struct=struct_symSX(slack_labels["Subu"]),
+                # ),
+                # entry("Suh", struct=struct_symSX([])),
             )
         ]
     )
 
+    # State box constraints
+    lbx = [constraints.lbx[i] if i in constraints.idxbx else -np.inf for i in range(ocp.dims.nx)]
+    ubx = [constraints.ubx[i] if i in constraints.idxbx else np.inf for i in range(ocp.dims.nx)]
+
+    # Control box constraints
+    lbu = [constraints.lbu[i] if i in constraints.idxbu else -np.inf for i in range(ocp.dims.nu)]
+    ubu = [constraints.ubu[i] if i in constraints.idxbu else np.inf for i in range(ocp.dims.nu)]
+
+    lbw = w(0)
+    lbw["X", lambda x: cs.vertcat(*x)] = np.tile(lbx, (1, ocp.dims.N))
+    lbw["U", lambda x: cs.vertcat(*x)] = np.tile(lbu, (1, ocp.dims.N - 1))
+    lbw["Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+    lbw["Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+
+    ubw = w(0)
+    ubw["X", lambda x: cs.vertcat(*x)] = np.tile(ubx, (1, ocp.dims.N))
+    ubw["U", lambda x: cs.vertcat(*x)] = np.tile(ubu, (1, ocp.dims.N - 1))
+    ubw["Slbx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, ocp.dims.N))
+    ubw["Subx", lambda x: cs.vertcat(*x)] = np.tile([np.inf for _ in constraints.idxsbx], (1, ocp.dims.N))
+
     x0 = ocp.constraints.lbx_0.tolist()
     u0 = 0
 
-    initial_guess = shooting(0)
-    initial_guess["X", lambda x: cs.horzcat(*x)] = np.tile(x0, (ocp.dims.N, 1)).T
-    initial_guess["U", lambda x: cs.horzcat(*x)] = np.tile(u0, (ocp.dims.N - 1, 1)).T
+    w0 = w(0)
+    w0["X", lambda x: cs.vertcat(*x)] = np.tile(x0, (1, ocp.dims.N))
+    w0["U", lambda x: cs.vertcat(*x)] = np.tile(u0, (1, ocp.dims.N - 1))
+    w0["Slbx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
+    w0["Subx", lambda x: cs.vertcat(*x)] = np.tile([0 for _ in constraints.idxsbx], (1, ocp.dims.N))
 
-    lbw = shooting(0)
-    lbw["X", lambda x: cs.horzcat(*x)] = np.tile(constraints.lbx, (ocp.dims.N, 1)).T
-    lbw["U", lambda x: cs.horzcat(*x)] = np.tile(constraints.lbu, (ocp.dims.N - 1, 1)).T
-
-    ubw = shooting(0)
-    ubw["X", lambda x: cs.horzcat(*x)] = np.tile(constraints.ubx, (ocp.dims.N, 1)).T
-    ubw["U", lambda x: cs.horzcat(*x)] = np.tile(constraints.ubu, (ocp.dims.N - 1, 1)).T
-
-    lbw["X", 0] = constraints.lbx_0
-    ubw["X", 0] = constraints.ubx_0
-
-    # # w0 = shooting(0)
-    # w0 = (
-    #     cs.vertcat(*[x0, u0 for _ in range(ocp.dims.N)])
-    #     .full()
-    #     .flatten()
-    # )
-
-    # w0 = struct_DM
-
+    # Parameter vector
     # TODO: Add support for multivariable parameters
     p = ocp.model.p
 
-    # Build the box constraints
-    # lbx = []
-    # ubx = []
-    # lbu = []
-    # ubu = []
-
-    # for i in range(ocp.dims.N):
-    #     lbx += constraints.lbx.tolist()
-    #     ubx += constraints.ubx.tolist()
-    #     lbu += constraints.lbu.tolist()
-    #     ubu += constraints.ubu.tolist()
-
-    # lbx[0] = constraints.lbx_0.tolist()
-    # ubx[0] = constraints.ubx_0.tolist()
-
-    # lbw = []
-    # ubw = []
-
-    # for i in range(ocp.dims.N):
-    #     lbw += constraints.lbx.tolist()
-    #     ubw += constraints.ubx.tolist()
-    #     lbw += constraints.lbu.tolist()
-    #     ubw += constraints.ubu.tolist()
-
-    # lbw[0] = constraints.lbx_0.tolist()
-    # ubw[0] = constraints.ubx_0.tolist()
-
-    # Build the multiple shooting constraints
+    # Build other constraints (dynamics, relaxed box constraints, etc.)
     g = []
+    lbg = []
+    ubg = []
+
+    # (x, u, s) = w[...]
+    (X, U, Slbx, Subx) = w[...]
+
+    # S = cs.vertcat(Sl, Su)
+
     for i in range(ocp.dims.N - 1):
-        g.append(shooting["X", i + 1] - phi(shooting["X", i], shooting["U", i], p))
+        # Add dynamics constraints
+        g.append(X[i + 1] - phi(X[i], U[i], p))
+        lbg.append([0 for _ in range(ocp.dims.nx)])
+        ubg.append([0 for _ in range(ocp.dims.nx)])
 
-    lbg = 0
-    ubg = 0
+        # Add relaxed box constraints for lower bounds
+        g.append(constraints.lbx[constraints.idxsbx] - X[i][constraints.idxsbx] - Slbx[i])
+        lbg.append([-cs.inf for _ in constraints.idxsbx])
+        ubg.append([0 for _ in constraints.idxsbx])
 
+        # Add relaxed box constraints for upper bounds
+        g.append(-constraints.ubx[constraints.idxsbx] + X[i][constraints.idxsbx] - Subx[i])
+        lbg.append([-cs.inf for _ in constraints.idxsbx])
+        ubg.append([0 for _ in constraints.idxsbx])
+
+    g = cs.vertcat(*g)
+    lbg = cs.vertcat(*lbg)
+    ubg = cs.vertcat(*ubg)
+
+    Sl = Slbx
+    Su = Subx
+
+    stage_cost_function = define_stage_cost_function(
+        x=ocp.model.x,
+        u=ocp.model.u,
+        sl=cs.SX.sym("sl", constraints.idxsbx.shape[0]),
+        su=cs.SX.sym("su", constraints.idxsbx.shape[0]),
+        yref=ocp.cost.yref,
+        W=ocp.cost.W,
+        Zl=ocp.cost.Zl,
+        Zu=ocp.cost.Zu,
+        zl=ocp.cost.zl,
+        zu=ocp.cost.zu,
+        cost=ocp.cost,
+    )
+
+    terminal_cost_function = define_terminal_cost_function(
+        x_e=ocp.model.x,
+        sl_e=cs.SX.sym("sl_e", constraints.idxsbx.shape[0]),
+        su_e=cs.SX.sym("su_e", constraints.idxsbx.shape[0]),
+        yref_e=ocp.cost.yref_e,
+        W_e=ocp.cost.W_e,
+        Zl_e=ocp.cost.Zl_e,
+        Zu_e=ocp.cost.Zu_e,
+        zl_e=ocp.cost.zl_e,
+        zu_e=ocp.cost.zu_e,
+        cost=ocp.cost,
+    )
+
+    cost = 0
     # Build the cost function
     for i in range(ocp.dims.N - 1):
-        cost += stage_cost_function(shooting["X", i], shooting["U", i])
+        cost += stage_cost_function(X[i], U[i], Sl[i], Su[i])
 
     # Add terminal cost
-    cost += terminal_cost_function(shooting["X", ocp.dims.N - 1])
-
-    # x0 = ocp.constraints.lbx_0.tolist()
-
-    # if isinstance(ocp.model.x, cs.SX):
-    #     sym = cs.SX.sym
-    # elif isinstance(ocp.model.x, cs.MX):
-    #     sym = cs.MX.sym
-
-    # "Lift" initial conditions
-    # xk = sym("x0", ocp.dims.nx)
-    # w += [xk]
-    # lbw += ocp.constraints.lbx_0.tolist()
-    # ubw += ocp.constraints.ubx_0.tolist()
-    # xout += [xk]
-
-    # h += [constraints.lbx_0 - Jbx0 @ xk]
-    # h += [Jbx0 @ xk - constraints.ubx_0]
-
-    # w0 += x0
-
-    # # Formulate the NLP
-    # for k in range(ocp.dims.N):
-    #     # New NLP variable for the control
-    #     uk = sym("u_" + str(k))
-    #     w += [uk]
-    #     uout += [uk]
-
-    #     lbw += constraints.lbu.tolist()
-    #     ubw += constraints.ubu.tolist()
-
-    #     # h += [constraints.lbu - Jbu @ uk]
-    #     # lbg += -np.inf * np.ones((ocp.dims.nu,)).tolist()
-
-    #     # h += [Jbu @ uk - constraints.ubu]
-    #     # ubg = np.zeros((ocp.dims.nu,)).tolist()
-
-    #     w0 += [0]
-
-    #     cost = cost + stage_cost_function(xk, uk)
-
-    #     # Integrate till the end of the interval
-    #     xk_end = F(xk, uk, p)
-
-    #     # New NLP variable for state at end of interval
-    #     xk = sym("x_" + str(k + 1), ocp.dims.nx)
-    #     w += [xk]
-    #     xout += [xk]
-    #     lbw += constraints.lbx.tolist()
-    #     ubw += constraints.ubx.tolist()
-
-    #     # h += [constraints.lbx - Jbx @ xk]
-    #     # lbg += -np.inf * np.ones((ocp.dims.nx,)).tolist()
-
-    #     # h += [Jbx @ xk - constraints.ubx]
-    #     # ubg += np.zeros((ocp.dims.nx,)).tolist()
-
-    #     w0 += x0
-
-    #     # Add equality constraint
-    #     g += [xk_end - xk]
-    #     lbg += np.zeros((ocp.dims.nx,)).tolist()
-    #     ubg += np.zeros((ocp.dims.nx,)).tolist()
-
-    # Add terminal cost
-    # cost = cost + terminal_cost_function(xk_end)
-
-    # trajectories = cs.Function(
-    #     "trajectories", [cs.vertcat(*w)], [cs.vertcat(*xout), cs.vertcat(*uout)]
-    # )
-
-    # xtest, utest = trajectories(cs.vertcat(*w))
+    cost += terminal_cost_function(X[ocp.dims.N - 1], Sl[ocp.dims.N - 1], Su[ocp.dims.N - 1])
 
     nlp = CasadiNLP()
     nlp.cost = cost
-    # nlp.w = cs.vertcat(*w)
-    nlp.w = shooting
-    nlp.w0 = initial_guess
+    nlp.w = w
+    nlp.w0 = w0
     nlp.lbw = lbw
     nlp.ubw = ubw
-    nlp.g = cs.vertcat(*g)
+    nlp.g = g
     nlp.lbg = lbg
     nlp.ubg = ubg
     nlp.p = p
@@ -934,9 +953,7 @@ def build_nlp(ocp: CasadiOcp) -> CasadiNLP:
     # Add terminal cost
     cost = cost + terminal_cost_function(xk_end)
 
-    trajectories = cs.Function(
-        "trajectories", [cs.vertcat(*w)], [cs.vertcat(*xout), cs.vertcat(*uout)]
-    )
+    trajectories = cs.Function("trajectories", [cs.vertcat(*w)], [cs.vertcat(*xout), cs.vertcat(*uout)])
 
     xtest, utest = trajectories(cs.vertcat(*w))
 
@@ -989,15 +1006,16 @@ class CasadiMPC(MPC):
 
         self.ocp = CasadiOcp()
 
-        self.ocp.model, self.ocp.parameter_values = define_acados_model(
-            ocp=self.ocp, config=config
-        )
+        self.ocp.model, self.ocp.parameter_values = define_acados_model(ocp=self.ocp, config=config)
 
         self.ocp.dims = define_acados_dims(ocp=self.ocp, config=config)
 
         self.ocp.cost = define_acados_cost(ocp=self.ocp, config=config)
 
         self.ocp.constraints = define_acados_constraints(ocp=self.ocp, config=config)
+
+        self.ocp.dims.nsbx = self.ocp.constraints.idxsbx.shape[0]
+        self.ocp.dims.nsbu = self.ocp.constraints.idxsbu.shape[0]
 
         self.ocp.solver_options = config.ocp_options
 
@@ -1062,12 +1080,8 @@ class CasadiMPC(MPC):
         return action
 
     def plot_prediction(self) -> (plt.figure, plt.axes):
-        X = np.vstack(
-            [self.ocp_solver.get(stage_, "x") for stage_ in range(self.ocp.dims.N)]
-        )
-        U = np.vstack(
-            [self.ocp_solver.get(stage_, "u") for stage_ in range(self.ocp.dims.N - 1)]
-        )
+        X = np.vstack([self.ocp_solver.get(stage_, "x") for stage_ in range(self.ocp.dims.N)])
+        U = np.vstack([self.ocp_solver.get(stage_, "u") for stage_ in range(self.ocp.dims.N - 1)])
 
         fig, axes = plt.subplots(nrows=5, ncols=1, sharex=True, figsize=(10, 10))
         for k, ax in enumerate(axes[:-1]):

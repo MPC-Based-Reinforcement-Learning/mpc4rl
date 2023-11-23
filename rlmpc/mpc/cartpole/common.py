@@ -55,6 +55,14 @@ class CostParams:
     Q: np.ndarray
     R: np.ndarray
     Q_e: np.ndarray
+    Zl: np.ndarray
+    Zu: np.ndarray
+    zl: np.ndarray
+    zu: np.ndarray
+    Zl_e: np.ndarray
+    Zu_e: np.ndarray
+    zl_e: np.ndarray
+    zu_e: np.ndarray
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -64,6 +72,14 @@ class CostParams:
             Q=np.diag(config_dict["Q"]),
             R=np.diag(config_dict["R"]),
             Q_e=np.diag(config_dict["Q_e"]),
+            Zl=np.diag(config_dict["Zl"]),
+            Zu=np.diag(config_dict["Zu"]),
+            zl=np.array(config_dict["zl"]),
+            zu=np.array(config_dict["zu"]),
+            Zl_e=np.diag(config_dict["Zl_e"]),
+            Zu_e=np.diag(config_dict["Zu_e"]),
+            zl_e=np.array(config_dict["zl_e"]),
+            zu_e=np.array(config_dict["zu_e"]),
         )
 
     def to_dict(self):
@@ -85,6 +101,7 @@ class ConstraintParams:
     idxbx: np.ndarray
     idxbu: np.ndarray
     idxsbx: np.ndarray = field(default_factory=lambda: np.array([]))
+    idxsbu: np.ndarray = field(default_factory=lambda: np.array([]))
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -98,6 +115,7 @@ class ConstraintParams:
             idxbx=np.array(config_dict["idxbx"]),
             idxbu=np.array(config_dict["idxbu"]),
             idxsbx=np.array(config_dict["idxsbx"]),
+            idxsbu=np.array(config_dict["idxsbu"]),
         )
 
     def to_dict(self):
@@ -263,9 +281,7 @@ def define_model_expressions(config: Config) -> (dict, np.ndarray):
     sin_theta = cs.sin(theta)
     temp = (u + p["m"] * theta_dot**2 * sin_theta) / (p["m"] + p["M"])
 
-    theta_ddot = (p["g"] * sin_theta - cos_theta * temp) / (
-        p["l"] * (4.0 / 3.0 - p["m"] * cos_theta**2 / (p["m"] + p["M"]))
-    )
+    theta_ddot = (p["g"] * sin_theta - cos_theta * temp) / (p["l"] * (4.0 / 3.0 - p["m"] * cos_theta**2 / (p["m"] + p["M"])))
 
     f_expl = cs.vertcat(
         s_dot,
@@ -324,6 +340,15 @@ def define_cost(config: Config) -> dict:
 
     cost["Vx_e"] = np.eye(dims["nx"])
 
+    cost["Zl"] = config.cost.Zl
+    cost["Zu"] = config.cost.Zu
+    cost["zl"] = config.cost.zl
+    cost["zu"] = config.cost.zu
+    cost["Zl_e"] = config.cost.Zl_e
+    cost["Zu_e"] = config.cost.Zu_e
+    cost["zl_e"] = config.cost.zl_e
+    cost["zu_e"] = config.cost.zu_e
+
     return cost
 
 
@@ -339,6 +364,7 @@ def define_constraints(config: Config) -> dict:
     constraints["idxbx"] = config.constraints.idxbx.reshape(-1)
     constraints["idxbu"] = config.constraints.idxbu.reshape(-1)
     constraints["idxsbx"] = config.constraints.idxsbx.reshape(-1)
+    constraints["idxsbu"] = config.constraints.idxsbu.reshape(-1)
 
     return constraints
 
