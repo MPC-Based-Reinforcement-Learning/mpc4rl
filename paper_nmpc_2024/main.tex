@@ -56,8 +56,32 @@
 }
 
 
+\subsection{Learning-based MPC schemes}
 
-\subsection{Related Work}
+Predictive Control schemes that use Machine Learning tools in the formulation of the Optimal Control Problem
+
+\textcolor{red}{
+   \begin{itemize}
+      \item GP-MPC~\citep{Berkenkamp2016}
+      \item Bayesian Optimization~\cite{Hewing2020a}
+      \item Gpflow \citep{GPflow2017}
+   \end{itemize}
+}
+
+\subsection{MPC-based Learning schemes}
+
+Learning schemes that use MPC as a policy, function approximator, etc.
+
+\cite{Berkenkamp2017}
+
+\subsection{Dependencies}
+\begin{itemize}
+   \item Gymnasium~\citep{towers_gymnasium_2023}
+   \item Stable-Baselines3~\citep{raffin2021reliable}
+   \item CasADi~\citep{Andersson2019}
+   \item acados~\citep{Verschueren2022}
+   \item Ipopt~\citep{Waechter2006}
+\end{itemize}
 
 \textcolor{red}{
    \begin{itemize}
@@ -116,6 +140,6 @@
    Place acknowledgments here.
 \end{ack}
 
-\bibliography{rlmpc_bibliography}
+\bibliography{references}
 
 \end{document}
