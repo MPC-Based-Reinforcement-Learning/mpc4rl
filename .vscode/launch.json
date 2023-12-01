@@ -27,5 +27,13 @@
             "console": "integratedTerminal",
             "justMyCode": true
         },
+        {
+            "name": "Python: test_CasadiMPC_sensitivities",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/test_CasadiMPC_sensitivities.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
     ]
 }

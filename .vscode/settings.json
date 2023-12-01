@@ -4,6 +4,10 @@
         "editor.formatOnSave": true,
         "editor.formatOnType": false,
     },
+    "black-formatter.args": [
+        "--line-length",
+        "127"
+    ],
     "python.autoComplete.extraPaths": [
         "${workspaceFolder}/external/stable_baselines3",
         "${workspaceFolder}/rlmpc",
