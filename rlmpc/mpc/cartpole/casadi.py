@@ -48,6 +48,7 @@ class CasadiNLP:
     g_solver: Union[cs.SX, cs.MX]
     lbg_solver: Union[list, np.ndarray]
     ubg_solver: Union[list, np.ndarray]
+    p_solver: Union[cs.SX, cs.MX]
     p: Union[cs.SX, cs.MX]
     f_disc: cs.Function
     shooting: struct_symSX
@@ -57,6 +58,8 @@ class CasadiNLP:
     lam: Union[cs.SX, cs.MX]  # Lange multiplier for inequality constraints
     h_fun: cs.Function  # Function to build inequality constraints, i.e. h(w)
     g_fun: cs.Function  # Function to build dynamics equality constraints, i.e. g(w, p)
+    idxhbx: list
+    idxsbx: list
 
     def __init__(self):
         super().__init__()
@@ -78,6 +81,9 @@ class CasadiNLP:
         self.lam = None
         self.h_fun = None
         self.g_fun = None
+        self.p_solver = None
+        self.idxhbx = None
+        self.idxsbx = None
 
 
 class CasadiModel(AcadosModel):
@@ -215,97 +221,98 @@ class CasadiOcpSolver:
         ############################## Build the NLP sensitivities #####################################
         # Move this part to a separate function alter when it is working
 
-        # Define the Lagrangian
-        Lag = nlp.cost + cs.mtimes([nlp.lam.cat.T, nlp.h]) + cs.mtimes([nlp.pi.cat.T, nlp.g])
+        if False:
+            # Define the Lagrangian
+            Lag = nlp.cost + cs.mtimes([nlp.lam.cat.T, nlp.h]) + cs.mtimes([nlp.pi.cat.T, nlp.g])
 
-        # Define the Lagrangian gradient with respect to the decision variables
-        dL_dw = cs.jacobian(Lag, nlp.w.cat)
+            # Define the Lagrangian gradient with respect to the decision variables
+            dL_dw = cs.jacobian(Lag, nlp.w.cat)
 
-        # Define the Lagrangian gradient with respect to the parameters
-        # TODO: Add support for multivariable parameters
-        dL_dp = cs.jacobian(Lag, nlp.p)
+            # Define the Lagrangian gradient with respect to the parameters
+            # TODO: Add support for multivariable parameters
+            dL_dp = cs.jacobian(Lag, nlp.p)
 
-        # Build KKT matrix
-        # TODO: Move etau to solver options
-        etau = 10e-8
-        R_kkt = cs.vertcat(cs.transpose(dL_dw), nlp.g, nlp.lam.cat * nlp.h + etau)
+            # Build KKT matrix
+            # TODO: Move etau to solver options
+            etau = 10e-8
+            R_kkt = cs.vertcat(cs.transpose(dL_dw), nlp.g, nlp.lam.cat * nlp.h + etau)
 
-        # Concatenate primal-dual variables
-        z = cs.vertcat(nlp.w.cat, nlp.lam.cat, nlp.pi.cat)
+            # Concatenate primal-dual variables
+            z = cs.vertcat(nlp.w.cat, nlp.lam.cat, nlp.pi.cat)
 
-        # Generate sensitivity of the KKT matrix with respect to primal-dual variables
-        dR_dz = cs.jacobian(R_kkt, z)
+            # Generate sensitivity of the KKT matrix with respect to primal-dual variables
+            dR_dz = cs.jacobian(R_kkt, z)
 
-        # Generate sensitivity of the KKT matrix with respect to parameters
-        dR_dp = cs.jacobian(R_kkt, nlp.p)
+            # Generate sensitivity of the KKT matrix with respect to parameters
+            dR_dp = cs.jacobian(R_kkt, nlp.p)
 
-        fun = dict()
-        fun["casadi"] = dict()
-        fun["casadi"]["R_kkt"] = cs.Function("R_kkt", [nlp.w.cat, nlp.pi.cat, nlp.lam.cat, nlp.p], [R_kkt])
-        fun["casadi"]["dL_dw"] = cs.Function("dL_dw", [nlp.w.cat, nlp.pi.cat, nlp.lam.cat, nlp.p], [dL_dw])
-        fun["casadi"]["cost"] = cs.Function("cost", [nlp.w.cat], [nlp.cost])
-        fun["casadi"]["g"] = cs.Function("g", [nlp.w.cat, nlp.p], [nlp.g], ["w", "p"], ["g"])
-        fun["casadi"]["h"] = cs.Function("h", [nlp.w.cat, nlp.p], [nlp.h], ["w", "p"], ["h"])
-        fun["casadi"]["dg_dw"] = cs.Function("dg_dw", [nlp.w.cat, nlp.p], [cs.jacobian(nlp.g, nlp.w.cat)])
-        fun["casadi"]["dh_dw"] = cs.Function("dh_dw", [nlp.w.cat, nlp.p], [cs.jacobian(nlp.h, nlp.w.cat)])
-        # fun["casadi"]["dR_dz"] = cs.Function("dR_dz", [z, nlp.p], [dR_dz])
-        # fun["casadi"]["dR_dp"] = cs.Function("dR_dp", [z, nlp.p], [dR_dp])
+            fun = dict()
+            fun["casadi"] = dict()
+            fun["casadi"]["R_kkt"] = cs.Function("R_kkt", [nlp.w.cat, nlp.pi.cat, nlp.lam.cat, nlp.p], [R_kkt])
+            fun["casadi"]["dL_dw"] = cs.Function("dL_dw", [nlp.w.cat, nlp.pi.cat, nlp.lam.cat, nlp.p], [dL_dw])
+            fun["casadi"]["cost"] = cs.Function("cost", [nlp.w.cat], [nlp.cost])
+            fun["casadi"]["g"] = cs.Function("g", [nlp.w.cat, nlp.p], [nlp.g], ["w", "p"], ["g"])
+            fun["casadi"]["h"] = cs.Function("h", [nlp.w.cat, nlp.p], [nlp.h], ["w", "p"], ["h"])
+            fun["casadi"]["dg_dw"] = cs.Function("dg_dw", [nlp.w.cat, nlp.p], [cs.jacobian(nlp.g, nlp.w.cat)])
+            fun["casadi"]["dh_dw"] = cs.Function("dh_dw", [nlp.w.cat, nlp.p], [cs.jacobian(nlp.h, nlp.w.cat)])
+            # fun["casadi"]["dR_dz"] = cs.Function("dR_dz", [z, nlp.p], [dR_dz])
+            # fun["casadi"]["dR_dp"] = cs.Function("dR_dp", [z, nlp.p], [dR_dp])
 
-        build_flag = True
-        if build_flag:
-            if True:
-                # Generate  and compile c-code for the functions
-                fun["compiled"] = dict.fromkeys(fun["casadi"].keys())
-                build_flag = True
-                for key, val in fun["casadi"].items():
-                    val.generate(f"{key}.c", {"mex": False})
+            build_flag = True
+            if build_flag:
+                if True:
+                    # Generate  and compile c-code for the functions
+                    fun["compiled"] = dict.fromkeys(fun["casadi"].keys())
+                    build_flag = True
+                    for key, val in fun["casadi"].items():
+                        val.generate(f"{key}.c", {"mex": False})
 
-                    # Compile using os.system
-                    if build_flag:
-                        flag = os.system(f"gcc -fPIC -shared {key}.c -o {key}.so")
+                        # Compile using os.system
+                        if build_flag:
+                            flag = os.system(f"gcc -fPIC -shared {key}.c -o {key}.so")
 
-                    fun["compiled"][key] = cs.external(key, f"{key}.so")
+                        fun["compiled"][key] = cs.external(key, f"{key}.so")
 
-                if False:  # Do this outside
-                    # Test use of the compiled function
+                    if False:  # Do this outside
+                        # Test use of the compiled function
 
-                    # test_z = np.zeros((nlp.w.cat.shape[0] + pi.cat.shape[0] + lam.cat.shape[0], 1))
-                    w_test = np.zeros((self.nlp.w.cat.shape[0], 1))
-                    lam_test = np.zeros((self.nlp.lam.cat.shape[0], 1))
-                    pi_test = np.zeros((self.nlp.pi.cat.shape[0], 1))
-                    p_test = np.ones((self.nlp.p.shape[0], 1))
+                        # test_z = np.zeros((nlp.w.cat.shape[0] + pi.cat.shape[0] + lam.cat.shape[0], 1))
+                        w_test = np.zeros((self.nlp.w.cat.shape[0], 1))
+                        lam_test = np.zeros((self.nlp.lam.cat.shape[0], 1))
+                        pi_test = np.zeros((self.nlp.pi.cat.shape[0], 1))
+                        p_test = np.ones((self.nlp.p.shape[0], 1))
 
-                    test = dict.fromkeys(fun["compiled"].keys())
+                        test = dict.fromkeys(fun["compiled"].keys())
 
-                    for key in ["R_kkt", "dL_dw"]:
-                        test[key] = fun["compiled"][key](w_test, pi_test, lam_test, p_test)
-                    for key in ["g", "h", "dg_dw", "dh_dw"]:
-                        test[key] = fun["compiled"][key](w_test, p_test)
-                    for key in ["cost"]:
-                        test[key] = fun["compiled"][key](w_test)
+                        for key in ["R_kkt", "dL_dw"]:
+                            test[key] = fun["compiled"][key](w_test, pi_test, lam_test, p_test)
+                        for key in ["g", "h", "dg_dw", "dh_dw"]:
+                            test[key] = fun["compiled"][key](w_test, p_test)
+                        for key in ["cost"]:
+                            test[key] = fun["compiled"][key](w_test)
 
-                    # test_res = fun["compiled"]["R_kkt"](w_test, pi_test, lam_test, p_test)
+                        # test_res = fun["compiled"]["R_kkt"](w_test, pi_test, lam_test, p_test)
 
-                    # Make a spy plot of dh_dw
-                    fig, ax = plt.subplots()
-                    ax.spy(test["dh_dw"])
+                        # Make a spy plot of dh_dw
+                        fig, ax = plt.subplots()
+                        ax.spy(test["dh_dw"])
 
-                    # Make a spy plot of dg_dw
-                    fig, ax = plt.subplots()
-                    ax.spy(test["dg_dw"])
+                        # Make a spy plot of dg_dw
+                        fig, ax = plt.subplots()
+                        ax.spy(test["dg_dw"])
 
-                    plt.show()
+                        plt.show()
 
-                    x_test = np.array([0.0, 0.0, np.pi / 2, 0.0])
-                    u_test = np.array([0.0])
+                        x_test = np.array([0.0, 0.0, np.pi / 2, 0.0])
+                        u_test = np.array([0.0])
 
-        self.fun = fun
+            self.fun = fun
 
         # Create an NLP solver
         self.nlp_solver = cs.nlpsol(
             "solver",
             "ipopt",
-            {"f": self.nlp.cost, "x": self.nlp.w, "p": self.nlp.p, "g": self.nlp.g_solver},
+            {"f": self.nlp.cost, "x": self.nlp.w, "p": self.nlp.p_solver, "g": self.nlp.g_solver},
             {"ipopt": {"max_iter": 100, "print_level": 0}, "jit": False, "verbose": False, "print_time": False},
         )
 
@@ -455,9 +462,19 @@ class CasadiOcpSolver:
             raise Exception(f"stage should be in [0, N], got {stage_}")
 
         if field_ == "lbx":
-            self.nlp.lbw["x", stage_] = value_
+            if stage_ == 0:
+                self.nlp.lbw["x", stage_] = value_
+            else:
+                # TODO: Not tested yet.
+                self.nlp.lbw["x", stage_][self.nlp.idxhbx] = value_[self.nlp.idxhbx]
+                self.nlp.p["lsbx", stage_] = value_[self.nlp.idxsbx]
         elif field_ == "ubx":
-            self.nlp.ubw["x", stage_] = value_
+            if stage_ == 0:
+                self.nlp.ubw["x", stage_] = value_
+            else:
+                # TODO: Not tested yet.
+                self.nlp.ubw["x", stage_][self.nlp.idxhbx] = value_[self.nlp.idxhbx]
+                self.nlp.p["lsbx", stage_] = value_[self.nlp.idxsbx]
         elif field_ == "lbu":
             self.nlp.lbw["u", stage_] = value_
         elif field_ == "ubu":
@@ -602,7 +619,7 @@ class CasadiOcpSolver:
             ubx=self.nlp.ubw,
             lbg=self.nlp.lbg_solver,
             ubg=self.nlp.ubg_solver,
-            p=self.p,
+            p=self.nlp.p,
         )
 
         self.w_opt = self.nlp.w(self.nlp_solution["x"])
@@ -618,56 +635,57 @@ class CasadiOcpSolver:
                 self.lam_g_opt[("lsbx", stage_)] = self.nlp_solution["lam_g"][self.idx["g"]["lsbx"][stage_]]
                 self.lam_g_opt[("usbx", stage_)] = self.nlp_solution["lam_g"][self.idx["g"]["usbx"][stage_]]
 
-        # Initial condition is an equality constraint. Treat separately
-        # Collect multipliers first. Do the clipping later.
-        # lbu
-        lam_opt = []
-        for stage_ in range(0, self.ocp.dims.N - 1):
-            lam_opt += [self.lam_x_opt["u", stage_]]
-            lam_opt += [self.lam_x_opt["x", stage_]]
-            lam_opt += [self.lam_x_opt["u", stage_]]
-            lam_opt += [self.lam_x_opt["x", stage_]]
-            lam_opt += [self.lam_x_opt["sx", stage_, "lbx"]]
-            lam_opt += [self.lam_x_opt["sx", stage_, "ubx"]]
+        if False:
+            # Initial condition is an equality constraint. Treat separately
+            # Collect multipliers first. Do the clipping later.
+            # lbu
+            lam_opt = []
+            for stage_ in range(0, self.ocp.dims.N - 1):
+                lam_opt += [self.lam_x_opt["u", stage_]]
+                lam_opt += [self.lam_x_opt["x", stage_]]
+                lam_opt += [self.lam_x_opt["u", stage_]]
+                lam_opt += [self.lam_x_opt["x", stage_]]
+                lam_opt += [self.lam_x_opt["slbx", stage_]]
+                lam_opt += [self.lam_x_opt["subx", stage_]]
 
-        lam_opt = np.concatenate(lam_opt)
+            lam_opt = np.concatenate(lam_opt)
 
-        # Eliminate the multipliers that correspond to inf bounds
-        # lbu
+            # Eliminate the multipliers that correspond to inf bounds
+            # lbu
 
-        pi_opt = self.nlp.pi(
-            cs.vertcat(
-                *[self.nlp_solution["lam_g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
+            pi_opt = self.nlp.pi(
+                cs.vertcat(
+                    *[self.nlp_solution["lam_g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
+                )
             )
-        )
 
-        # g_opt_old = self.nlp.g(
-        #     cs.vertcat(*[self.nlp_solution["g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)])
-        # )
+            # g_opt_old = self.nlp.g(
+            #     cs.vertcat(*[self.nlp_solution["g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)])
+            # )
 
-        # lsbx = [self.nlp_solution["g"][self.idx["g"]["lsbx"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-        # usbx = [self.nlp_solution["g"][self.idx["g"]["usbx"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
+            # lsbx = [self.nlp_solution["g"][self.idx["g"]["lsbx"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
+            # usbx = [self.nlp_solution["g"][self.idx["g"]["usbx"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
 
-        # h_opt = []
-        # for stage_ in range(self.ocp.dims.N - 1):
-        #     h_opt += []
+            # h_opt = []
+            # for stage_ in range(self.ocp.dims.N - 1):
+            #     h_opt += []
 
-        g_opt = self.fun["compiled"]["g"](self.w_opt, self.p)
-        h_opt = self.fun["compiled"]["h"](self.w_opt, self.p)
+            g_opt = self.fun["compiled"]["g"](self.w_opt, self.p)
+            h_opt = self.fun["compiled"]["h"](self.w_opt, self.p)
 
-        # Build equality constraints from pi. Done
-        # pi = [self.nlp_solution["pi"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-        # g = [self.nlp_solution["g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
+            # Build equality constraints from pi. Done
+            # pi = [self.nlp_solution["pi"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
+            # g = [self.nlp_solution["g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
 
-        # Build inequality constraints from g and lwb, ubw
-        # h = []
-        # for stage_ in range(self.ocp.dims.N - 1):
-        #     # Box constraints
-        #     h += [self.nlp_solution["w"][self.idx["g"]["lsbx"][stage_]].full()]
+            # Build inequality constraints from g and lwb, ubw
+            # h = []
+            # for stage_ in range(self.ocp.dims.N - 1):
+            #     # Box constraints
+            #     h += [self.nlp_solution["w"][self.idx["g"]["lsbx"][stage_]].full()]
 
-        # Build inequality constraints from g and lwb, ubw
+            # Build inequality constraints from g and lwb, ubw
 
-        a = self.get_multiplier(0, "ubx")
+            a = self.get_multiplier(0, "ubx")
 
         return self.nlp_solution, self.w_opt
 
@@ -915,92 +933,220 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
     input_labels = ocp.model.u.str().strip("[]").split(", ")
 
     # Index of box constraints
-    idxbx = constraints.idxbx
-    idxbu = constraints.idxbu
+    # TODO: Check if we are converting back and forth between list and np.ndarray too much
+    idxbx = constraints.idxbx.tolist()
+    idxbu = constraints.idxbu.tolist()
 
     # Index of soft box constraints
-    idxsbx = constraints.idxsbx
-    idxsbu = constraints.idxsbu
+    idxsbx = constraints.idxsbx.tolist()
+    idxsbu = constraints.idxsbu.tolist()
 
     # Index of hard box constraints
     idxhbx = [idx for idx in idxbx if idx not in idxsbx]
     idxhbu = [idx for idx in idxbu if idx not in idxsbu]
 
-    decision_entries = []
+    nlp.idxsbx = idxsbx
+    nlp.idxhbx = idxhbx
 
     # Add states to decision variables
     states = struct_symSX([tuple([entry(label) for label in state_labels])])
-    decision_entries += [entry("x", repeat=ocp.dims.N, struct=states)]
+    x_entry = entry("x", repeat=ocp.dims.N, struct=states)
+    lbx_entry = entry("lbx", repeat=ocp.dims.N, struct=states)
+    ubx_entry = entry("ubx", repeat=ocp.dims.N, struct=states)
 
     # Add inputs to decision variables
     inputs = struct_symSX([tuple([entry(label) for label in input_labels])])
-    decision_entries += [entry("u", repeat=ocp.dims.N - 1, struct=inputs)]
+    u_entry = entry("u", repeat=ocp.dims.N - 1, struct=inputs)
+    lbu_entry = entry("lbu", repeat=ocp.dims.N - 1, struct=inputs)
+    ubu_entry = entry("ubu", repeat=ocp.dims.N - 1, struct=inputs)
 
     # Add slack variables for relaxed state box constraints to decision variables
     # TODO: Handle the case when there are no relaxed state box constraints
     # TODO: Add support for relaxed input box constraints
     # TODO: Add support for other types of relaxed constraints
 
-    sx_entries = []
-    sx_entries += [entry("lbx", struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))]
-    sx_entries += [entry("ubx", struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))]
-    sx = struct_symSX([tuple(sx_entries)])
-    decision_entries += [entry("sx", repeat=ocp.dims.N, struct=sx)]
+    slbx_entry = entry("slbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
+    lslbx_entry = entry("lslbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
+    uslbx_entry = entry("uslbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
 
-    nlp.w = struct_symSX([tuple(decision_entries)])
+    subx_entry = entry("subx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
+    lsubx_entry = entry("lsubx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
+    usubx_entry = entry("usubx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
 
-    # Hard box constraints
-    lhbu = [constraints.lbu[i] if i in idxhbu else -np.inf for i in range(ocp.dims.nu)]
-    lhbx = [constraints.lbx[i] if i in idxhbx else -np.inf for i in range(ocp.dims.nx)]
-    uhbu = [constraints.ubu[i] if i in idxhbu else np.inf for i in range(ocp.dims.nu)]
-    uhbx = [constraints.ubx[i] if i in idxhbx else np.inf for i in range(ocp.dims.nx)]
-
-    # Soft box constraints
-    lsbx = cs.vertcat(*[constraints.lbx[i] for i in idxsbx])
-    lsbu = cs.vertcat(*[constraints.lbu[i] for i in idxsbu])
-    usbx = cs.vertcat(*[constraints.ubx[i] for i in idxsbx])
-    usbu = cs.vertcat(*[constraints.ubu[i] for i in idxsbu])
-
-    ############ Build the NLP ############
-
-    ############ Hard box constraints ############
-
-    nlp.lbw = nlp.w(0)
-    nlp.lbw["x", lambda x: cs.vertcat(*x)] = np.tile(lhbx, (1, ocp.dims.N))
-    nlp.lbw["u", lambda x: cs.vertcat(*x)] = np.tile(lhbu, (1, ocp.dims.N - 1))
-    for stage_ in range(ocp.dims.N):
-        nlp.lbw["sx", stage_, "lbx"] = [0 for _ in constraints.idxsbx]
-        nlp.lbw["sx", stage_, "ubx"] = [0 for _ in constraints.idxsbx]
-
-    nlp.ubw = nlp.w(0)
-    nlp.ubw["x", lambda x: cs.vertcat(*x)] = np.tile(uhbx, (1, ocp.dims.N))
-    nlp.ubw["u", lambda x: cs.vertcat(*x)] = np.tile(uhbu, (1, ocp.dims.N - 1))
-    for stage_ in range(ocp.dims.N):
-        nlp.ubw["sx", stage_, "lbx"] = [np.inf for _ in constraints.idxsbx]
-        nlp.ubw["sx", stage_, "ubx"] = [np.inf for _ in constraints.idxsbx]
-
-    x0 = ocp.constraints.lbx_0.tolist()
-    u0 = 0
-
-    ############# Initial guess #############
-
-    nlp.w0 = nlp.w(0)
-    nlp.w0["x", lambda x: cs.vertcat(*x)] = np.tile(x0, (1, ocp.dims.N))
-    nlp.w0["u", lambda x: cs.vertcat(*x)] = np.tile(u0, (1, ocp.dims.N - 1))
-    for stage_ in range(ocp.dims.N):
-        nlp.w0["sx", stage_, "lbx"] = [0 for _ in constraints.idxsbx]
-        nlp.w0["sx", stage_, "ubx"] = [0 for _ in constraints.idxsbx]
+    # TODO: Add support for relaxed input box constraints etc.
+    nlp.w = struct_symSX([(x_entry, u_entry, slbx_entry, subx_entry)])
+    nlp.w0 = struct_symSX([(x_entry, u_entry, slbx_entry, subx_entry)])
+    nlp.lbw = struct_symSX([(lbx_entry, lbu_entry, lslbx_entry, lsubx_entry)])
+    nlp.ubw = struct_symSX([(ubx_entry, ubu_entry, uslbx_entry, usubx_entry)])
 
     ############# Parameter vector #############
 
     # Parameter vector
     # TODO: Add support for multivariable parameters
+
+    p_model_labels = ocp.model.p.str().strip("[]").split(", ")
+
+    p_model_entry = entry("p", repeat=ocp.dims.N, struct=struct_symSX([entry(label) for label in p_model_labels]))
+    p_lbx_entry = entry("lsbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
+    p_ubx_entry = entry("usbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in constraints.idxsbx]))
+
+    nlp.p_solver = struct_symSX([(p_model_entry, p_lbx_entry, p_ubx_entry)])
+
     nlp.p = ocp.model.p
+
+    # nlp.p_solver
+
+    # p_model_entry = entry("p_model", repeat=ocp.dims.N, struct=struct_symSX([entry("p", repeat=ocp.dims.np)]))
+    # p_lbw_entry = entry("p_lbw", repeat=ocp.dims.N, struct=struct_symSX([entry("p", repeat=ocp.dims.np)]))
+    # p_ubw_entry = entry("p_ubw", repeat=ocp.dims.N, struct=struct_symSX([entry("p", repeat=ocp.dims.np)]))
+
+    ############ Build the NLP ############
+
+    ############ Equality constraints ############
+
+    pi_entries = entry("pi", repeat=ocp.dims.N - 1, struct=states)
+    pi = struct_symSX([pi_entries])
+
+    g = []
+    lbg = []
+    ubg = []
+
+    for stage_ in range(ocp.dims.N - 1):
+        g.append(nlp.w["x", stage_ + 1] - nlp.f_disc(nlp.w["x", stage_], nlp.w["u", stage_], nlp.p))
+        lbg.append([0 for _ in range(ocp.dims.nx)])
+        ubg.append([0 for _ in range(ocp.dims.nx)])
+
+    g_fun = cs.Function("g", [nlp.w, nlp.p], [cs.vertcat(*g)], ["w", "p"], ["g"])
+
+    ############ Inequality constraints ############
+
+    """
+            .. note:: regarding lam, t: \n
+                    the inequalities are internally organized in the following order: \n
+                    [ lbu lbx lg lh lphi ubu ubx ug uh uphi; \n
+                      lsbu lsbx lsg lsh lsphi usbu usbx usg ush usphi]
+
+            .. note:: pi: multipliers for dynamics equality constraints \n
+                      lam: multipliers for inequalities \n
+                      t: slack variables corresponding to evaluation of all inequalities (at the solution) \n
+                      sl: slack variables of soft lower inequality constraints \n
+                      su: slack variables of soft upper inequality constraints \n
+    """
+
+    # Build inequality constraint
+    lam_entries = []
+
+    x, u, slbx, subx = nlp.w[...]
+    lbx, lbu, lslbx, lsubx = nlp.lbw[...]
+    ubx, ubu, uslbx, usubx = nlp.ubw[...]
+
+    h = []
+    for stage_ in range(ocp.dims.N - 1):
+        print(stage_)
+        if idxhbu:
+            h += [lbu[stage_][idxhbu] - u[stage_][idxhbu]]
+            if stage_ == 0:
+                lam_entries += [lbu_entry]  # (N-1) * 1 = 29
+        if idxhbx:
+            h += [lbx[stage_][idxhbx] - x[stage_][idxhbx]]
+            if stage_ == 0:
+                lam_entries += [lbx_entry]  # N * 2 = 60
+        if idxhbu:
+            h += [u[stage_][idxhbu] - ubu[stage_][idxhbu]]
+            if stage_ == 0:
+                lam_entries += [ubu_entry]  # (N-1) * 1 = 29
+        if idxhbx:
+            h += [x[stage_][idxhbx] - ubx[stage_][idxhbx]]
+            if stage_ == 0:
+                lam_entries += [ubx_entry]  # N * 2 = 60
+        if idxsbx:
+            h += [+lbx[stage_][idxsbx] - x[stage_][idxsbx] - slbx[stage_]]
+            if stage_ == 0:
+                lam_entries += [slbx_entry]  # N * 2 = 60
+        if idxsbx:
+            h += [-ubx[stage_][idxsbx] + x[stage_][idxsbx] - subx[stage_]]
+            if stage_ == 0:
+                lam_entries += [subx_entry]  # N * 2 = 60
+        if idxsbx:
+            h += [lslbx[stage_] - slbx[stage_]]
+            if stage_ == 0:
+                lam_entries += [lslbx_entry]  # N * 2 = 60
+        if idxsbx:
+            h += [lsubx[stage_] - subx[stage_]]
+            if stage_ == 0:
+                lam_entries += [lsubx_entry]  # N * 2 = 60
+        if idxsbx:
+            h += [-uslbx[stage_] + slbx[stage_]]
+            if stage_ == 0:
+                lam_entries += [uslbx_entry]  # N * 2 = 60
+        if idxsbx:
+            h += [-usubx[stage_] + subx[stage_]]
+            if stage_ == 0:
+                lam_entries += [usubx_entry]  # N * 2 = 60
+
+    lam = struct_symSX([tuple(lam_entries)])
+
+    h_fun = cs.Function("h", [nlp.w, nlp.lbw, nlp.ubw], [cs.vertcat(*h)], ["w", "lbw", "ubw"], ["h"])
+
+    # nlp.g_solver.append(lsbx - nlp.w["x", stage_][idxsbx] - nlp.w["sx", stage_, "lbx"])
+    # nlp.lbg_solver.append([-cs.inf for _ in idxsbx])
+    # nlp.ubg_solver.append([0 for _ in idxsbx])
+
+    ############ Hard box constraints ############
+
+    # Keep for reference on how to initialize the hard bounds
+    if True:
+        # Hard box constraints
+        lhbu = [constraints.lbu[i] if i in idxhbu else -np.inf for i in range(ocp.dims.nu)]
+        lhbx = [constraints.lbx[i] if i in idxhbx else -np.inf for i in range(ocp.dims.nx)]
+        uhbu = [constraints.ubu[i] if i in idxhbu else np.inf for i in range(ocp.dims.nu)]
+        uhbx = [constraints.ubx[i] if i in idxhbx else np.inf for i in range(ocp.dims.nx)]
+
+        # Soft box constraints
+        lsbx = cs.vertcat(*[constraints.lbx[i] for i in idxsbx])
+        lsbu = cs.vertcat(*[constraints.lbu[i] for i in idxsbu])
+        usbx = cs.vertcat(*[constraints.ubx[i] for i in idxsbx])
+        usbu = cs.vertcat(*[constraints.ubu[i] for i in idxsbu])
+
+        nlp.lbw = nlp.w(0)
+        nlp.lbw["x", lambda x: cs.vertcat(*x)] = np.tile(lhbx, (1, ocp.dims.N))
+        nlp.lbw["u", lambda x: cs.vertcat(*x)] = np.tile(lhbu, (1, ocp.dims.N - 1))
+        for stage_ in range(ocp.dims.N):
+            nlp.lbw["slbx", stage_] = [0 for _ in constraints.idxsbx]
+            nlp.lbw["slbx", stage_] = [0 for _ in constraints.idxsbx]
+
+        nlp.ubw = nlp.w(0)
+        nlp.ubw["x", lambda x: cs.vertcat(*x)] = np.tile(uhbx, (1, ocp.dims.N))
+        nlp.ubw["u", lambda x: cs.vertcat(*x)] = np.tile(uhbu, (1, ocp.dims.N - 1))
+        for stage_ in range(ocp.dims.N):
+            nlp.ubw["slbx", stage_] = [np.inf for _ in constraints.idxsbx]
+            nlp.ubw["subx", stage_] = [np.inf for _ in constraints.idxsbx]
+
+        x0 = ocp.constraints.lbx_0.tolist()
+        u0 = 0
+
+        nlp.p = nlp.p_solver(0)
+        nlp.p["p", lambda x: cs.vertcat(*x)] = np.tile(ocp.parameter_values, (1, ocp.dims.N))
+        nlp.p["lsbx", lambda x: cs.vertcat(*x)] = np.tile([constraints.lbx[i] for i in idxsbx], (1, ocp.dims.N))
+        nlp.p["usbx", lambda x: cs.vertcat(*x)] = np.tile([constraints.ubx[i] for i in idxsbx], (1, ocp.dims.N))
+
+    ############# Initial guess #############
+
+    # Keep for reference on how to initialize the initial guess
+    if True:
+        nlp.w0 = nlp.w(0)
+        nlp.w0["x", lambda x: cs.vertcat(*x)] = np.tile(x0, (1, ocp.dims.N))
+        nlp.w0["u", lambda x: cs.vertcat(*x)] = np.tile(u0, (1, ocp.dims.N - 1))
+        for stage_ in range(ocp.dims.N):
+            nlp.w0["slbx", stage_] = [0 for _ in constraints.idxsbx]
+            nlp.w0["subx", stage_] = [0 for _ in constraints.idxsbx]
 
     # Build other constraints (dynamics, relaxed box constraints, etc.)
 
     # Alias for the states, control, and slack variables
-    (X, U, _) = nlp.w[...]
+    (x, u, slbx, subx) = nlp.w[...]
+
+    (lbx, lbu, lslbx, lsubx) = nlp.lbw[...]
 
     # S = cs.vertcat(Sl, Su)
 
@@ -1020,9 +1166,11 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
 
     running_index = 0
 
+    (p, relaxed_lbx, relaxed_ubx) = nlp.p_solver[...]
+
     for stage_ in range(ocp.dims.N - 1):
         # Add dynamics constraints
-        nlp.g_solver.append(nlp.w["x", stage_ + 1] - nlp.f_disc(nlp.w["x", stage_], nlp.w["u", stage_], nlp.p))
+        nlp.g_solver.append(x[stage_ + 1] - nlp.f_disc(x[stage_], u[stage_], p[stage_]))
         nlp.lbg_solver.append([0 for _ in range(ocp.dims.nx)])
         nlp.ubg_solver.append([0 for _ in range(ocp.dims.nx)])
 
@@ -1031,21 +1179,21 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
         running_index = idx["g"]["pi"][-1][-1] + 1
 
         # Add relaxed box constraints for lower bounds
-        nlp.g_solver.append(lsbx - nlp.w["x", stage_][idxsbx] - nlp.w["sx", stage_, "lbx"])
+        nlp.g_solver.append(relaxed_lbx[stage_] - x[stage_][idxsbx] - slbx[stage_])
         nlp.lbg_solver.append([-cs.inf for _ in idxsbx])
         nlp.ubg_solver.append([0 for _ in idxsbx])
 
         # Add indices for the added elements to g
-        idx["g"]["lsbx"].append([running_index + i for i in range(idxsbx.shape[0])])
+        idx["g"]["lsbx"].append([running_index + i for i in range(len(idxsbx))])
         running_index = idx["g"]["lsbx"][-1][-1] + 1
 
         # Add relaxed box constraints for upper bounds
-        nlp.g_solver.append(-usbx + nlp.w["x", stage_][idxsbx] - nlp.w["sx", stage_, "ubx"])
+        nlp.g_solver.append(-relaxed_ubx[stage_] + x[stage_][idxsbx] - subx[stage_])
         nlp.lbg_solver.append([-cs.inf for _ in idxsbx])
         nlp.ubg_solver.append([0 for _ in idxsbx])
 
         # Add indices for the added elements to g
-        idx["g"]["usbx"].append([running_index + i for i in range(idxsbx.shape[0])])
+        idx["g"]["usbx"].append([running_index + i for i in range(len(idxsbx))])
         running_index = idx["g"]["usbx"][-1][-1] + 1
 
     nlp.g_solver = cs.vertcat(*nlp.g_solver)
@@ -1097,53 +1245,8 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
 
     nlp.pi = pi
 
-    # Build inequality constraint
-    lam_entries = []
-    h = []
-
-    # Initial condition
-    # h += [lhbx_0 - X[0][idxhbx_0]]
-
-    for stage_ in range(ocp.dims.N - 1):
-        if any(idxhbu):
-            if stage_ == 0:
-                lam_entries += [
-                    entry("lbu", repeat=ocp.dims.N - 1, struct=struct_symSX([input_labels[idx] for idx in idxhbu]))
-                ]
-            h += [(cs.SX(lhbu) - U[stage_])[idxhbu]]
-        if any(idxhbx):
-            if stage_ == 0:
-                lam_entries += [
-                    entry("lbx", repeat=ocp.dims.N - 1, struct=struct_symSX([state_labels[idx] for idx in idxhbx]))
-                ]
-            h += [(cs.SX(lhbx) - X[stage_])[idxhbx]]
-        if any(idxhbu):
-            if stage_ == 0:
-                lam_entries += [
-                    entry("ubu", repeat=ocp.dims.N - 1, struct=struct_symSX([input_labels[idx] for idx in idxhbu]))
-                ]
-            h += [(U[stage_] - cs.SX(uhbu))[idxhbu]]
-        if any(idxhbx):
-            if stage_ == 0:
-                lam_entries += [
-                    entry("ubx", repeat=ocp.dims.N - 1, struct=struct_symSX([state_labels[idx] for idx in idxhbx]))
-                ]
-            h += [(X[stage_] - cs.SX(uhbx))[idxhbx]]
-        if any(idxsbx):
-            if stage_ == 0:
-                lam_entries += [
-                    entry("lsbx", repeat=ocp.dims.N - 1, struct=struct_symSX([state_labels[idx] for idx in idxsbx]))
-                ]
-            h += [nlp.g_solver[idx["g"]["lsbx"][stage_]]]
-        if any(idxsbx):
-            if stage_ == 0:
-                lam_entries += [
-                    entry("usbx", repeat=ocp.dims.N - 1, struct=struct_symSX([state_labels[idx] for idx in idxsbx]))
-                ]
-            h += [nlp.g_solver[idx["g"]["usbx"][stage_]]]
-
     nlp.lam = struct_symSX([tuple(lam_entries)])
-    nlp.h = nlp.lam(cs.vertcat(*h))
+    # nlp.h = nlp.lam(cs.vertcat(*h))
 
     # TODO: Possibly move this to separate function where cs.Functions are built and compiled
     # nlp.h_fun = cs.Function("h", [nlp.w], [nlp.h], ["w"], ["h"])
@@ -1155,8 +1258,8 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
     stage_cost_function = define_stage_cost_function(
         x=ocp.model.x,
         u=ocp.model.u,
-        sl=cs.SX.sym("sl", idxsbx.shape[0]),
-        su=cs.SX.sym("su", idxsbx.shape[0]),
+        sl=cs.SX.sym("sl", len(idxsbx)),
+        su=cs.SX.sym("su", len(idxsbx)),
         yref=ocp.cost.yref,
         W=ocp.cost.W,
         Zl=ocp.cost.Zl,
@@ -1168,8 +1271,8 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
 
     terminal_cost_function = define_terminal_cost_function(
         x_e=ocp.model.x,
-        sl_e=cs.SX.sym("sl_e", idxsbx.shape[0]),
-        su_e=cs.SX.sym("su_e", idxsbx.shape[0]),
+        sl_e=cs.SX.sym("sl_e", len(idxsbx)),
+        su_e=cs.SX.sym("su_e", len(idxsbx)),
         yref_e=ocp.cost.yref_e,
         W_e=ocp.cost.W_e,
         Zl_e=ocp.cost.Zl_e,
@@ -1182,12 +1285,11 @@ def build_nlp_with_slack(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
     nlp.cost = 0
     # Build the cost function
     for stage_ in range(ocp.dims.N - 1):
-        nlp.cost += stage_cost_function(
-            nlp.w["x", stage_], nlp.w["u", stage_], nlp.w["sx", stage_, "lbx"], nlp.w["sx", stage_, "ubx"]
-        )
+        nlp.cost += stage_cost_function(x[stage_], u[stage_], slbx[stage_], subx[stage_])
 
     # Add terminal cost
-    nlp.cost += terminal_cost_function(nlp.w["x", stage_], nlp.w["sx", stage_, "lbx"], nlp.w["sx", stage_, "ubx"])
+    stage_ = ocp.dims.N - 1
+    nlp.cost += terminal_cost_function(x[stage_], slbx[stage_], subx[stage_])
 
     # nlp.g = g
     # nlp.h = h
