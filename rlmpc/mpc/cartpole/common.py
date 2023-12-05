@@ -102,6 +102,7 @@ class ConstraintParams:
     idxbu: np.ndarray
     idxsbx: np.ndarray = field(default_factory=lambda: np.array([]))
     idxsbu: np.ndarray = field(default_factory=lambda: np.array([]))
+    idxsbx_e: np.ndarray = field(default_factory=lambda: np.array([]))
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -116,6 +117,7 @@ class ConstraintParams:
             idxbu=np.array(config_dict["idxbu"]),
             idxsbx=np.array(config_dict["idxsbx"]),
             idxsbu=np.array(config_dict["idxsbu"]),
+            idxsbx_e=np.array(config_dict["idxsbx_e"]),
         )
 
     def to_dict(self):
@@ -365,6 +367,7 @@ def define_constraints(config: Config) -> dict:
     constraints["idxbu"] = config.constraints.idxbu.reshape(-1)
     constraints["idxsbx"] = config.constraints.idxsbx.reshape(-1)
     constraints["idxsbu"] = config.constraints.idxsbu.reshape(-1)
+    constraints["idxsbx_e"] = config.constraints.idxsbx_e.reshape(-1)
 
     return constraints
 

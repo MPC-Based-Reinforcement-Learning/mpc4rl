@@ -76,6 +76,15 @@ def define_acados_dims(ocp: AcadosOcp, config: Config) -> AcadosOcpDims:
         setattr(ocp.dims, key, val)
 
     ocp.dims.np = ocp.model.p.size()[0]
+
+    # TODO: Add other slack variable dimensions
+    ocp.dims.nsbx = ocp.constraints.idxsbx.shape[0]
+    ocp.dims.nsbu = ocp.constraints.idxsbu.shape[0]
+    ocp.dims.ns = ocp.dims.nsbx + ocp.dims.nsbu
+
+    ocp.dims.nsbx_e = ocp.constraints.idxsbx_e.shape[0]
+    ocp.dims.ns_e = ocp.dims.nsbx_e
+
     return ocp.dims
 
 
@@ -160,9 +169,7 @@ class AcadosMPC(MPC):
             self.ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file)
         else:
             # Assumes json file and c_generated_code folder already exists
-            self.ocp_solver = AcadosOcpSolver(
-                ocp, json_file=config.meta.json_file, build=False, generate=False
-            )
+            self.ocp_solver = AcadosOcpSolver(ocp, json_file=config.meta.json_file, build=False, generate=False)
 
         self._parameters = ocp.parameter_values
 
@@ -261,11 +268,7 @@ class AcadosMPC(MPC):
         """
         Print the header for the data table.
         """
-        print(
-            "{:>8} {:>8} {:>8} {:>8} {:>8}".format(
-                "x", "x_dot", "theta", "theta_dot", "u"
-            )
-        )
+        print("{:>8} {:>8} {:>8} {:>8} {:>8}".format("x", "x_dot", "theta", "theta_dot", "u"))
 
     def print_data(self, x: np.ndarray, u: np.ndarray) -> None:
         """
@@ -275,6 +278,4 @@ class AcadosMPC(MPC):
             x: State.
             u: Control.
         """
-        print(
-            "{:8.3f} {:8.3f} {:8.3f} {:8.3f} {:8.3f}".format(x[0], x[1], x[2], x[3], u)
-        )
+        print("{:8.3f} {:8.3f} {:8.3f} {:8.3f} {:8.3f}".format(x[0], x[1], x[2], x[3], u))
