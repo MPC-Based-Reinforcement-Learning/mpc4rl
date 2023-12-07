@@ -80,16 +80,40 @@ if __name__ == "__main__":
 
     p_test = np.linspace(0.5, 1.1, 100)
 
-    x0 = np.array([0.0, 0.0, np.pi, 0.0])
+    x0 = np.array([0.0, 0.0, np.deg2rad(90), 0.0])
 
-    res = test_dL_dp(mpc, p_test, x0, plot=True)
+    L = np.zeros(p_test.shape[0])
+    L_test = np.zeros(p_test.shape[0])
+    dL_dp = np.zeros((p_test.shape[0], mpc.ocp_solver.ocp.dims.N))
 
-    exit(0)
+    # Repeat dp ocp.dims.N times (one for each stage)
+    dp = p_test[1] - p_test[0]
+    dp = np.repeat(dp, mpc.ocp_solver.ocp.dims.N)
 
-    u0 = mpc.get_action(x0)
+    for i, p_i in enumerate(p_test):
+        for stage_ in range(mpc.ocp_solver.ocp.dims.N):
+            mpc.ocp_solver.constraints_set(0, "lbx", x0)
+            mpc.ocp_solver.constraints_set(0, "ubx", x0)
+            mpc.ocp_solver.set(stage_=stage_, field_="p", value_=p_i)
+            mpc.ocp_solver.set(stage_=stage_, field_="x", value_=x0)
 
-    mpc.plot_prediction()
+        mpc.ocp_solver.solve()
+
+        # TODO: check status
+        # if status != 0:
+
+        L[i] = mpc.ocp_solver.compute_lagrange_function_value()
+
+        dL_dp[i, :] = mpc.ocp_solver.compute_lagrange_function_parametric_sensitivity()
+        if i == 0:
+            L_test[i] = mpc.ocp_solver.compute_lagrange_function_value()
+        else:
+            L_test[i] = L_test[i - 1] + np.dot(dL_dp[i, :], dp)
+
+    _, ax = plt.subplots()
+    ax.plot(p_test, L)
+    ax.plot(p_test, L_test, "--")
+    ax.set_ylabel("L")
+    ax.grid(True)
 
     plt.show()
-
-    print("u0: ", u0)
