@@ -225,7 +225,7 @@ class CasadiOcpSolver:
     def build(cls, casadi_ocp: CasadiOcp):
         pass
 
-    def __init__(self, _ocp: CasadiOcp, build):
+    def __init__(self, _ocp: CasadiOcp, build, name: str = "ocp_solver"):
         super().__init__()
 
         # self._ocp.model, self._ocp.parameter_values = define_acados_model(
@@ -281,25 +281,22 @@ class CasadiOcpSolver:
             dR_dp = cs.jacobian(R, nlp.p.sym)
 
             fun = dict()
-            fun["casadi"] = dict()
-            fun["casadi"]["L"] = cs.Function(
+            fun["L"] = cs.Function(
                 "L",
                 [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym],
                 [L],
                 ["w", "lbw", "ubw", "pi", "lam", "p"],
                 ["L"],
             )
-            fun["casadi"]["dL_dp"] = cs.Function(
+            fun["dL_dp"] = cs.Function(
                 "dL_dp", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [dL_dp], ["w", "pi", "lam", "p"], ["dL_dp"]
             )
-            fun["casadi"]["dL_dw"] = cs.Function("dL_dw", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [dL_dw])
+            fun["dL_dw"] = cs.Function("dL_dw", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [dL_dw])
 
-            # fun["casadi"]["cost"] = cs.Function("cost", [nlp.w], [nlp.cost])
-            fun["casadi"]["g"] = cs.Function("g", [nlp.w.sym, nlp.p.sym], [nlp.g.sym], ["w", "p"], ["g"])
+            # fun["cost"] = cs.Function("cost", [nlp.w], [nlp.cost])
+            fun["g"] = cs.Function("g", [nlp.w.sym, nlp.p.sym], [nlp.g.sym], ["w", "p"], ["g"])
 
-            fun["casadi"]["h"] = cs.Function(
-                "h", [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym], [nlp.h.sym], ["w", "lbw", "ubw"], ["h"]
-            )
+            fun["h"] = cs.Function("h", [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym], [nlp.h.sym], ["w", "lbw", "ubw"], ["h"])
             # fun["casadi"]["dg_dw"] = cs.Function("dg_dw", [nlp.w, nlp.p], [cs.jacobian(nlp.g, nlp.w)])
             # fun["casadi"]["dh_dw"] = cs.Function("dh_dw", [nlp.w, nlp.p], [cs.jacobian(nlp.h, nlp.w)])
             # fun["casadi"]["dR_dz"] = cs.Function(
@@ -308,13 +305,11 @@ class CasadiOcpSolver:
             #     [dR_dz],
             # )
 
-            fun["casadi"]["R"] = cs.Function(
-                "R", [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [R]
-            )
+            fun["R"] = cs.Function("R", [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [R])
 
-            fun["casadi"]["z"] = cs.Function("z", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym], [z], ["w", "pi", "lam"], ["z"])
+            fun["z"] = cs.Function("z", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym], [z], ["w", "pi", "lam"], ["z"])
 
-            fun["casadi"]["dR_dz"] = cs.Function(
+            fun["dR_dz"] = cs.Function(
                 "dR_dz",
                 [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym],
                 [dR_dz],
@@ -322,7 +317,7 @@ class CasadiOcpSolver:
                 ["dR_dz"],
             )
 
-            fun["casadi"]["dR_dp"] = cs.Function(
+            fun["dR_dp"] = cs.Function(
                 "dR_dp",
                 [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym],
                 [dR_dp],
@@ -333,51 +328,50 @@ class CasadiOcpSolver:
             # fun["casadi"]["dR_dp"] = cs.Function("dR_dp", [z, nlp.p], [dR_dp])
 
             if build:
-                if True:
-                    # Generate  and compile c-code for the functions
-                    fun["compiled"] = dict.fromkeys(fun["casadi"].keys())
-                    build_flag = True
-                    for key, val in fun["casadi"].items():
-                        val.generate(f"{key}.c", {"mex": False})
+                # Generate  and compile c-code for the functions
+                for key, val in fun.items():
+                    val.generate(f"{name}_{key}.c", {"mex": False})
 
-                        # Compile using os.system
-                        if build_flag:
-                            flag = os.system(f"gcc -fPIC -shared {key}.c -o {key}.so")
+                # Compile using os.system
+                status = os.system(f"gcc -fPIC -shared {name}_{key}.c -o {name}_{key}.so")
 
-                        fun["compiled"][key] = cs.external(key, f"{key}.so")
+                if status != 0:
+                    raise Exception(f"Error compiling {name}_{key}.c")
 
-                    if False:  # Do this outside
-                        # Test use of the compiled function
+                fun[key] = cs.external(key, f"{name}_{key}.so")
 
-                        # test_z = np.zeros((nlp.w.cat.shape[0] + pi.cat.shape[0] + lam.cat.shape[0], 1))
-                        w_test = np.zeros((self.nlp.w.cat.shape[0], 1))
-                        lam_test = np.zeros((self.nlp.lam.cat.shape[0], 1))
-                        pi_test = np.zeros((self.nlp.pi.cat.shape[0], 1))
-                        p_test = np.ones((self.nlp.p_solver.shape[0], 1))
+                if False:  # Do this outside
+                    # Test use of the compiled function
 
-                        test = dict.fromkeys(fun["compiled"].keys())
+                    # test_z = np.zeros((nlp.w.cat.shape[0] + pi.cat.shape[0] + lam.cat.shape[0], 1))
+                    w_test = np.zeros((self.nlp.w.cat.shape[0], 1))
+                    lam_test = np.zeros((self.nlp.lam.cat.shape[0], 1))
+                    pi_test = np.zeros((self.nlp.pi.cat.shape[0], 1))
+                    p_test = np.ones((self.nlp.p_solver.shape[0], 1))
 
-                        for key in ["R_kkt", "dL_dw"]:
-                            test[key] = fun["compiled"][key](w_test, pi_test, lam_test, p_test)
-                        for key in ["g", "h", "dg_dw", "dh_dw"]:
-                            test[key] = fun["compiled"][key](w_test, p_test)
-                        for key in ["cost"]:
-                            test[key] = fun["compiled"][key](w_test)
+                    test = dict.fromkeys(fun.keys())
 
-                        # test_res = fun["compiled"]["R_kkt"](w_test, pi_test, lam_test, p_test)
+                    for key in ["R_kkt", "dL_dw"]:
+                        test[key] = fun[key](w_test, pi_test, lam_test, p_test)
+                    for key in ["g", "h", "dg_dw", "dh_dw"]:
+                        test[key] = fun[key](w_test, p_test)
+                    for key in ["cost"]:
+                        test[key] = fun[key](w_test)
 
-                        # Make a spy plot of dh_dw
-                        fig, ax = plt.subplots()
-                        ax.spy(test["dh_dw"])
+                    # test_res = fun["R_kkt"](w_test, pi_test, lam_test, p_test)
 
-                        # Make a spy plot of dg_dw
-                        fig, ax = plt.subplots()
-                        ax.spy(test["dg_dw"])
+                    # Make a spy plot of dh_dw
+                    fig, ax = plt.subplots()
+                    ax.spy(test["dh_dw"])
 
-                        plt.show()
+                    # Make a spy plot of dg_dw
+                    fig, ax = plt.subplots()
+                    ax.spy(test["dg_dw"])
 
-                        x_test = np.array([0.0, 0.0, np.pi / 2, 0.0])
-                        u_test = np.array([0.0])
+                    plt.show()
+
+                    x_test = np.array([0.0, 0.0, np.pi / 2, 0.0])
+                    u_test = np.array([0.0])
 
             self.fun = fun
 
@@ -392,7 +386,6 @@ class CasadiOcpSolver:
         # build_lagrange_function(out, self.ocp)
 
         self.nlp_solution = None
-        self.w_opt = None
 
     # def compute_KKT(self, w: cs.SX, pi: cs.SX, lam: cs.SX, p: cs.SX) -> cs.SX:
     def compute_KKT(
@@ -416,29 +409,97 @@ class CasadiOcpSolver:
         """
         pass
 
-    def compute_state_action_value_function_value(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+    def compute_policy(self, state: np.ndarray, solve: bool = True) -> np.ndarray:
+        """
+        Compute the policy.
+
+        Args:
+            state: State.
+            solve: Solve the OCP.
+
+        Returns:
+            Policy.
+        """
+        if solve:
+            self.constraints_set(stage_=0, field_="lbx", value_=state)
+            self.constraints_set(stage_=0, field_="ubx", value_=state)
+            self.set(stage_=0, field_="x", value_=state)
+            self.solve()
+
+        return self.nlp.w.val["u", 0].full()
+
+    def compute_state_action_value_function_value(
+        self, state: np.ndarray, action: np.ndarray, type=cs.DM
+    ) -> Union[np.ndarray, cs.DM]:
         """
         Compute the value of the state-action value function.
 
         Returns:
             Value of the state-action value function.
         """
-        if type == cs.DM:
-            return self.nlp_solution["f"]
-        else:
-            raise NotImplementedError()
 
-    def compute_state_value_function_value(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+        self.constraints_set(stage_=0, field_="lbx", value_=state)
+        self.constraints_set(stage_=0, field_="ubx", value_=state)
+        self.set(stage_=0, field_="x", value_=state)
+
+        self.constraints_set(stage_=0, field_="lbu", value_=action)
+        self.constraints_set(stage_=0, field_="ubu", value_=action)
+        self.set(stage_=0, field_="u", value_=action)
+
+        self.solve()
+
+        return self.nlp_solution["f"]
+
+    def compute_policy_parametric_sensitivity(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+        """
+        Compute the gradient of the policy.
+
+        Returns:
+            Gradient of the policy.
+        """
+
+        dR_dz = self.fun["dR_dz"](
+            self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val
+        )
+        dR_dp = self.fun["dR_dp"](
+            self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val
+        )
+
+        # dR_dz_inv = np.linalg.inv(dR_dz)
+
+        dpi_dp_all = -np.linalg.inv(dR_dz) @ dR_dp
+        dpi_dp = dpi_dp_all[: self.ocp.dims.nu]
+
+        return dpi_dp
+
+    def compute_state_action_value_function_parametric_sensitivity(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+        """
+        Compute the gradient of the state value function.
+
+        Returns:
+            Gradient of the state value function.
+        """
+        return self.compute_lagrange_function_parametric_sensitivity(type=type)
+
+    def compute_state_value_function_value(self, state: np.ndarray, type=cs.DM) -> Union[np.ndarray, cs.DM]:
         """
         Compute the value of the state.
 
         Returns:
             Value of the state.
         """
-        if type == cs.DM:
-            return self.nlp_solution["f"]
-        else:
-            raise NotImplementedError()
+        # if type == cs.DM:
+        #     return self.nlp_solution["f"]
+        # else:
+        #     raise NotImplementedError()
+
+        self.constraints_set(stage_=0, field_="lbx", value_=state)
+        self.constraints_set(stage_=0, field_="ubx", value_=state)
+        self.set(stage_=0, field_="x", value_=state)
+
+        self.solve()
+
+        return self.nlp_solution["f"]
 
     def compute_state_value_function_parametric_sensitivity(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
         """
@@ -457,7 +518,7 @@ class CasadiOcpSolver:
             Value of the Lagrange function.
         """
         if type == cs.DM:
-            return self.fun["compiled"]["L"](
+            return self.fun["L"](
                 self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val
             )
         else:
@@ -471,7 +532,7 @@ class CasadiOcpSolver:
             Gradient of the Lagrange function.
         """
         if type == cs.DM:
-            return self.fun["compiled"]["dL_dp"](self.nlp.w.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val)
+            return self.fun["dL_dp"](self.nlp.w.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val)
         else:
             raise NotImplementedError()
 
@@ -590,7 +651,7 @@ class CasadiOcpSolver:
         elif field_ == "lbu":
             self.nlp.lbw.val["lbu", stage_] = value_
         elif field_ == "ubu":
-            self.nlp.ubw.val["lbu", stage_] = value_
+            self.nlp.ubw.val["ubu", stage_] = value_
         elif field_ == "lg":
             raise Exception("lg is not implemented yet.")
         elif field_ == "ug":
@@ -725,9 +786,6 @@ class CasadiOcpSolver:
 
         self.nlp.w.val = self.nlp.w.sym(self.nlp_solution["x"])
 
-        # self.lam_x_opt = self.nlp.w(self.nlp_solution["lam_x"])
-        # self.lam_g_opt = self.nlp_solution["lam_g"]
-
         ### Build the multipliers for the equality and inequality constraints we use in our NLP formulation (different to solver)
         # TODO: Move the multiplier treatment to a separate function
 
@@ -737,7 +795,7 @@ class CasadiOcpSolver:
 
         self.nlp.pi.val = self.nlp_solution["lam_g"][g_idx]
 
-        self.nlp.h.val = self.fun["compiled"]["h"](self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val)
+        self.nlp.h.val = self.fun["h"](self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val)
 
         lam_x = self.nlp.w.sym(self.nlp_solution["lam_x"])
 
@@ -769,8 +827,8 @@ class CasadiOcpSolver:
         self.nlp.lam.val["lsbx", stage_] = -cs.fmin(self.nlp_solution["lam_g"][self.idx["g"]["lsbx"][stage_]], 0.0)
         self.nlp.lam.val["usbx", stage_] = +cs.fmax(self.nlp_solution["lam_g"][self.idx["g"]["usbx"][stage_]], 0.0)
 
-        self.nlp.g.val = self.fun["compiled"]["g"](self.nlp.w.val, self.nlp.p.val)
-        self.nlp.h.val = self.fun["compiled"]["h"](self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val)
+        self.nlp.g.val = self.fun["g"](self.nlp.w.val, self.nlp.p.val)
+        self.nlp.h.val = self.fun["h"](self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val)
 
         # Test if g includes inf or nan
         if np.any(np.isinf(self.nlp.g.val)) or np.any(np.isnan(self.nlp.g.val)):
@@ -780,7 +838,7 @@ class CasadiOcpSolver:
         if np.any(np.isinf(self.nlp.h.val)) or np.any(np.isnan(self.nlp.h.val)):
             raise RuntimeError("h includes inf or nan")
 
-        return self.nlp_solution, self.w_opt
+        return self.nlp_solution
 
 
 def define_casadi_dims(model: dict, config: Config) -> dict:
@@ -1187,6 +1245,8 @@ def build_nlp(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
 
     # test = struct_symSX([tuple(test_entries)])
 
+    # TODO: Causes singular matrix error due to redundant slack and hard hard constraints in KKT matrix. Remove there for now
+
     idxhbu = [idx for idx in range(ocp.dims.nu)]
     idxhbx = [idx for idx in range(ocp.dims.nx)]
 
@@ -1216,7 +1276,7 @@ def build_nlp(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
             if stage_ == 0:
                 lam_entries += [entry("lsbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in idxsbx]))]
         if idxsbx:
-            h += [-ubx[stage_][idxsbx] + x[stage_][idxsbx] - subx[stage_]]
+            h += [x[stage_][idxsbx] - ubx[stage_][idxsbx] - subx[stage_]]
             if stage_ == 0:
                 lam_entries += [entry("usbx", repeat=ocp.dims.N, struct=struct_symSX([state_labels[idx] for idx in idxsbx]))]
         if idxsbx:  # s_lbx > 0
@@ -1460,22 +1520,17 @@ class CasadiMPC(MPC):
 
         self.ocp.solver_options = config.ocp_options
 
-        self.ocp_solver = CasadiOcpSolver(self.ocp, build=build)
+        # self.ocp_solver = CasadiOcpSolver(self.ocp, build=build)
+
+        self.v_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="v_ocp_solver")
+        self.q_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="q_ocp_solver")
 
         self.parameter_values = self.ocp.parameter_values
 
         # TODO: At the moment we only support one parameter for all stages. Add support for stage-wise parameters.
         for stage_ in range(self.ocp.dims.N):
-            self.ocp_solver.set(stage_, "p", self.ocp.parameter_values)
-
-    def compute_lagrange_function_value(self):
-        # self.ocp_solver.get()
-
-        w_ipopt = self.ocp_solver.nlp_solution["x"].full().flatten()
-        lam_g_ipopt = self.ocp_solver.nlp_solution["lam_g"].full().flatten()
-        g_ipopt = self.ocp_solver.nlp_solution["g"].full().flatten()
-
-        print("hallo")
+            self.q_ocp_solver.set(stage_, "p", self.ocp.parameter_values)
+            self.v_ocp_solver.set(stage_, "p", self.ocp.parameter_values)
 
     def get_parameters(self) -> np.ndarray:
         return self.parameter_values
@@ -1493,7 +1548,7 @@ class CasadiMPC(MPC):
 
         return 2.0 * ((action - low) / (high - low)) - 1.0
 
-    def get_action(self, x0: np.ndarray) -> np.ndarray:
+    def get_action(self, x0: np.ndarray, solve: bool = True) -> np.ndarray:
         """
         Update the solution of the OCP solver.
 
@@ -1504,68 +1559,19 @@ class CasadiMPC(MPC):
             action: Scaled optimal control action.
         """
 
-        # Set initial state
-        self.ocp_solver.constraints_set(0, "lbx", x0)
-        self.ocp_solver.constraints_set(0, "ubx", x0)
+        if solve:
+            # Set initial state
+            self.v_ocp_solver.constraints_set(0, "lbx", x0)
+            self.v_ocp_solver.constraints_set(0, "ubx", x0)
 
-        # Solve the optimization problem
-        self.ocp_solver.solve()
+            # Solve the optimization problem
+            self.v_ocp_solver.solve()
 
         # Get solution
-        action = self.ocp_solver.get(0, "u")
+        action = self.v_ocp_solver.get(0, "u")
 
         # Scale to [-1, 1] for gym
         action = self.scale_action(action)
-
-        sol = self.ocp_solver.nlp_solution
-
-        if False:
-            J = sol["f"]
-
-            w = sol["x"].full().flatten()
-
-            # # lam_w = sol["lam_x"].full().flatten().tolist()
-            # # lam_lbw = np.array([value_ if value_ < 0.0 else 0.0 for value_ in lam_w])
-            # # lam_ubw = np.array([value_ if value_ > 0.0 else 0.0 for value_ in lam_w])
-
-            g = sol["g"].full().flatten()
-
-            # lam_g = sol["lam_g"].full().flatten()
-
-            # test = self.ocp_solver.nlp.w(sol["x"].full())
-
-            X = np.hstack([self.ocp_solver.get(stage_, "x") for stage_ in range(self.ocp.dims.N)]).T
-            U = np.hstack([self.ocp_solver.get(stage_, "u") for stage_ in range(self.ocp.dims.N - 1)]).T
-            pi = np.hstack([self.ocp_solver.get(stage_, "pi") for stage_ in range(self.ocp.dims.N - 1)]).T
-            # lam = np.hstack([self.ocp_solver.get(stage_, "lam") for stage_ in range(self.ocp.dims.N)]).T
-
-            lbu = np.hstack([self.ocp_solver.get_multiplier(stage_, "lbu") for stage_ in range(self.ocp.dims.N - 1)]).T
-            lbx = np.hstack([self.ocp_solver.get_multiplier(stage_, "lbx") for stage_ in range(self.ocp.dims.N)]).T
-            ubu = np.hstack([self.ocp_solver.get_multiplier(stage_, "ubu") for stage_ in range(self.ocp.dims.N - 1)]).T
-            ubx = np.hstack([self.ocp_solver.get_multiplier(stage_, "ubx") for stage_ in range(self.ocp.dims.N)]).T
-            lsbx = np.hstack([self.ocp_solver.get_multiplier(stage_, "lsbx") for stage_ in range(self.ocp.dims.N - 1)]).T
-            usbx = np.hstack([self.ocp_solver.get_multiplier(stage_, "usbx") for stage_ in range(self.ocp.dims.N - 1)]).T
-
-            # # t = np.hstack([self.ocp_solver.get(stage_, "t") for stage_ in range(self.ocp.dims.N)]).T
-            # # sl = np.hstack([self.ocp_solver.get(stage_, "sl") for stage_ in range(self.ocp.dims.N)]).T
-            # # su = np.hstack([self.ocp_solver.get(stage_, "su") for stage_ in range(self.ocp.dims.N)]).T
-
-        # Build the Lagrangian
-        # L = J + lam_g.T @ g + lam_lbw.T @ (w - self.ocp_solver.nlp.lbw) + lam_ubw.T @ (self.ocp_solver.nlp.ubw - w)
-
-        # ubu = [constraints.ubu[i] if i in idxhbu else np.inf for i in range(ocp.dims.nu)]
-
-        # print("hallo")
-
-        ####
-        # nlp_solver = self.ocp_solver.nlp_solver
-
-        # sol = self.ocp_solver.nlp_solution
-
-        # lam_w = sol["lam_x"]
-        # w = sol["x"]
-        # lam_g = sol["lam_g"]
-        # g = sol["g"]
 
         return action
 
