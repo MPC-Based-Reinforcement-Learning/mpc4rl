@@ -225,7 +225,7 @@ class CasadiOcpSolver:
     def build(cls, casadi_ocp: CasadiOcp):
         pass
 
-    def __init__(self, _ocp: CasadiOcp):
+    def __init__(self, _ocp: CasadiOcp, build):
         super().__init__()
 
         # self._ocp.model, self._ocp.parameter_values = define_acados_model(
@@ -332,8 +332,7 @@ class CasadiOcpSolver:
 
             # fun["casadi"]["dR_dp"] = cs.Function("dR_dp", [z, nlp.p], [dR_dp])
 
-            build_flag = True
-            if build_flag:
+            if build:
                 if True:
                     # Generate  and compile c-code for the functions
                     fun["compiled"] = dict.fromkeys(fun["casadi"].keys())
@@ -387,32 +386,8 @@ class CasadiOcpSolver:
             "solver",
             "ipopt",
             {"f": self.nlp.cost, "x": self.nlp.w.sym, "p": self.nlp.p_solver.sym, "g": self.nlp.g_solver},
-            {"ipopt": {"max_iter": 100, "print_level": 0}, "jit": False, "verbose": False, "print_time": False},
+            {"ipopt": {"max_iter": 100, "print_level": 0}, "jit": build, "verbose": False, "print_time": False},
         )
-
-        if False:
-            self.nlp_solution = self.nlp_solver(
-                x0=self.nlp.w.val,
-                p=1.0,
-                lbg=self.nlp.lbg_solver,
-                ubg=self.nlp.ubg_solver,
-                lbx=self.nlp.lbw,
-                ubx=self.nlp.ubw,
-            )
-
-            x_opt = self.nlp_solution["x"]
-
-            x = x_opt[0 :: (self.ocp.dims.nx + self.ocp.dims.nu)]
-            v = x_opt[1 :: (self.ocp.dims.nx + self.ocp.dims.nu)]
-            theta = x_opt[2 :: (self.ocp.dims.nx + self.ocp.dims.nu)]
-            dtheta = x_opt[3 :: (self.ocp.dims.nx + self.ocp.dims.nu)]
-            u = x_opt[4 :: (self.ocp.dims.nx + self.ocp.dims.nu)]
-
-            fig, axes = plt.subplots(5, 1, figsize=(10, 10))
-            for k, ax in enumerate(axes):
-                ax.plot(x_opt[k :: (self.ocp.dims.nx + self.ocp.dims.nu)].full().flatten())
-
-            plt.show()
 
         # build_lagrange_function(out, self.ocp)
 
@@ -440,6 +415,39 @@ class CasadiOcpSolver:
             KKT matrix.
         """
         pass
+
+    def compute_state_action_value_function_value(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+        """
+        Compute the value of the state-action value function.
+
+        Returns:
+            Value of the state-action value function.
+        """
+        if type == cs.DM:
+            return self.nlp_solution["f"]
+        else:
+            raise NotImplementedError()
+
+    def compute_state_value_function_value(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+        """
+        Compute the value of the state.
+
+        Returns:
+            Value of the state.
+        """
+        if type == cs.DM:
+            return self.nlp_solution["f"]
+        else:
+            raise NotImplementedError()
+
+    def compute_state_value_function_parametric_sensitivity(self, type=cs.DM) -> Union[np.ndarray, cs.DM]:
+        """
+        Compute the gradient of the state value function.
+
+        Returns:
+            Gradient of the state value function.
+        """
+        return self.compute_lagrange_function_parametric_sensitivity(type=type)
 
     def compute_lagrange_function_value(self, type=cs.DM) -> float:
         """
@@ -771,70 +779,6 @@ class CasadiOcpSolver:
         # Test if h includes inf or nan
         if np.any(np.isinf(self.nlp.h.val)) or np.any(np.isnan(self.nlp.h.val)):
             raise RuntimeError("h includes inf or nan")
-
-        L = self.fun["casadi"]["L"](
-            self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val
-        )
-
-        if False:
-            # Repackage lam_g into a dictionary with the same structure as w
-            self.lam_g_opt = dict()
-            for stage_ in range(self.ocp.dims.N - 1):
-                self.lam_g_opt[("pi", stage_)] = self.nlp_solution["lam_g"][self.idx["g"]["pi"][stage_]]
-                self.lam_g_opt[("lsbx", stage_)] = self.nlp_solution["lam_g"][self.idx["g"]["lsbx"][stage_]]
-                self.lam_g_opt[("usbx", stage_)] = self.nlp_solution["lam_g"][self.idx["g"]["usbx"][stage_]]
-
-        if False:
-            # Initial condition is an equality constraint. Treat separately
-            # Collect multipliers first. Do the clipping later.
-            # lbu
-            lam_opt = []
-            for stage_ in range(0, self.ocp.dims.N - 1):
-                lam_opt += [self.lam_x_opt["u", stage_]]
-                lam_opt += [self.lam_x_opt["x", stage_]]
-                lam_opt += [self.lam_x_opt["u", stage_]]
-                lam_opt += [self.lam_x_opt["x", stage_]]
-                lam_opt += [self.lam_x_opt["slbx", stage_]]
-                lam_opt += [self.lam_x_opt["subx", stage_]]
-
-            lam_opt = np.concatenate(lam_opt)
-
-            # Eliminate the multipliers that correspond to inf bounds
-            # lbu
-
-            pi_opt = self.nlp.pi(
-                cs.vertcat(
-                    *[self.nlp_solution["lam_g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-                )
-            )
-
-            # g_opt_old = self.nlp.g(
-            #     cs.vertcat(*[self.nlp_solution["g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)])
-            # )
-
-            # lsbx = [self.nlp_solution["g"][self.idx["g"]["lsbx"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-            # usbx = [self.nlp_solution["g"][self.idx["g"]["usbx"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-
-            # h_opt = []
-            # for stage_ in range(self.ocp.dims.N - 1):
-            #     h_opt += []
-
-            g_opt = self.fun["compiled"]["g"](self.w_opt, self.p)
-            h_opt = self.fun["compiled"]["h"](self.w_opt, self.p)
-
-            # Build equality constraints from pi. Done
-            # pi = [self.nlp_solution["pi"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-            # g = [self.nlp_solution["g"][self.idx["g"]["pi"][stage_]].full() for stage_ in range(self.ocp.dims.N - 1)]
-
-            # Build inequality constraints from g and lwb, ubw
-            # h = []
-            # for stage_ in range(self.ocp.dims.N - 1):
-            #     # Box constraints
-            #     h += [self.nlp_solution["w"][self.idx["g"]["lsbx"][stage_]].full()]
-
-            # Build inequality constraints from g and lwb, ubw
-
-            a = self.get_multiplier(0, "ubx")
 
         return self.nlp_solution, self.w_opt
 
@@ -1516,7 +1460,7 @@ class CasadiMPC(MPC):
 
         self.ocp.solver_options = config.ocp_options
 
-        self.ocp_solver = CasadiOcpSolver(self.ocp)
+        self.ocp_solver = CasadiOcpSolver(self.ocp, build=build)
 
         self.parameter_values = self.ocp.parameter_values
 
