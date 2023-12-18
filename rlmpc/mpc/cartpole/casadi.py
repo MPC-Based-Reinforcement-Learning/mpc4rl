@@ -251,7 +251,7 @@ class CasadiOcpSolver:
     def build(cls, casadi_ocp: CasadiOcp):
         pass
 
-    def __init__(self, _ocp: CasadiOcp, build, name: str = "ocp_solver"):
+    def __init__(self, _ocp: CasadiOcp, build, name: str = "ocp_solver", code_export_dir: str = "c_generated_code"):
         super().__init__()
 
         # self._ocp.model, self._ocp.parameter_values = define_acados_model(
@@ -387,17 +387,27 @@ class CasadiOcpSolver:
             # fun["casadi"]["dR_dp"] = cs.Function("dR_dp", [z, nlp.p], [dR_dp])
 
             if build:
+                # Make code_export_dir if it does not exist
+                if not os.path.exists(code_export_dir):
+                    os.makedirs(code_export_dir)
+
                 # Generate  and compile c-code for the functions
                 for key, val in fun.items():
+                    # val.generate(f"{code_export_dir}/{name}_{key}.c", {"mex": False})
                     val.generate(f"{name}_{key}.c", {"mex": False})
 
-                # Compile using os.system
-                status = os.system(f"gcc -fPIC -shared {name}_{key}.c -o {name}_{key}.so")
+                    # Move the generated c-code to code_export_dir
+                    os.rename(f"{name}_{key}.c", f"{code_export_dir}/{name}_{key}.c")
 
-                if status != 0:
-                    raise Exception(f"Error compiling {name}_{key}.c")
+                    # Compile using os.system
+                    status = os.system(
+                        f"gcc -fPIC -shared {code_export_dir}/{name}_{key}.c -o {code_export_dir}/{name}_{key}.so"
+                    )
 
-                fun[key] = cs.external(key, f"{name}_{key}.so")
+                    if status != 0:
+                        raise Exception(f"Error compiling {code_export_dir}/{name}_{key}.c")
+
+                    fun[key] = cs.external(key, f"{code_export_dir}/{name}_{key}.so")
 
                 if False:  # Do this outside
                     # Test use of the compiled function
@@ -1880,8 +1890,9 @@ class CasadiMPC(MPC):
 
         # self.ocp_solver = CasadiOcpSolver(self.ocp, build=build)
 
-        self.v_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="v_ocp_solver")
-        self.q_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="q_ocp_solver")
+        self.v_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="v_ocp_solver", code_export_dir=config.meta.c_code_export_directory)
+
+        self.q_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="q_ocp_solver", code_export_dir=config.meta.c_code_export_directory)
 
         self.parameter_values = self.ocp.parameter_values
 
