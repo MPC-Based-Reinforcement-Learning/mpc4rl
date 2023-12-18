@@ -84,6 +84,12 @@ class CasadiNLP:
     idxsbx: list
     idxhbu: list
     idxsbu: list
+    L: CasadiNLPEntry
+    dL_dw: CasadiNLPEntry
+    dL_dp: CasadiNLPEntry
+    R: CasadiNLPEntry
+    dR_dw: CasadiNLPEntry
+    dR_dp: CasadiNLPEntry
 
     def __init__(self):
         super().__init__()
@@ -103,6 +109,9 @@ class CasadiNLP:
         self.f_disc = None
         self.shooting = None
         self.g = CasadiNLPEntry()
+        self.dg_dw = CasadiNLPEntry()
+        self.dg_dpi = CasadiNLPEntry()
+        self.dg_dlam = CasadiNLPEntry()
         self.pi = CasadiNLPEntry()
         self.h = CasadiNLPEntry()
         self.h_licq = CasadiNLPEntry()
@@ -112,6 +121,15 @@ class CasadiNLP:
         self.idxsbx = None
         self.idxhbu = None
         self.idxsbu = None
+        self.L = CasadiNLPEntry()
+        self.dL_dw = CasadiNLPEntry()
+        self.ddL_dwdw = CasadiNLPEntry()
+        self.ddL_dwdpi = CasadiNLPEntry()
+        self.ddL_dwdlam = CasadiNLPEntry()
+        self.dL_dp = CasadiNLPEntry()
+        self.R = CasadiNLPEntry()
+        self.dR_dw = CasadiNLPEntry()
+        self.dR_dp = CasadiNLPEntry()
 
 
 class CasadiModel(AcadosModel):
@@ -257,7 +275,7 @@ class CasadiOcpSolver:
 
         if True:
             # Define the Lagrangian
-            L = nlp.cost + cs.dot(nlp.pi.sym, nlp.g.sym) + cs.dot(nlp.lam_licq.sym, nlp.h.sym)
+            nlp.L.sym = nlp.cost + cs.dot(nlp.pi.sym, nlp.g.sym) + cs.dot(nlp.lam_licq.sym, nlp.h.sym)
 
             # L += cs.dot(nlp.lam.sym[0])
 
@@ -271,11 +289,15 @@ class CasadiOcpSolver:
             # print(cs.dot(a, b))
 
             # Define the Lagrangian gradient with respect to the decision variables
-            dL_dw = cs.jacobian(L, nlp.w.sym)
+            nlp.dL_dw.sym = cs.jacobian(nlp.L.sym, nlp.w.sym)
+
+            nlp.ddL_dwdw.sym = cs.jacobian(nlp.dL_dw.sym, nlp.w.sym)
+            nlp.ddL_dwpi.sym = cs.jacobian(nlp.dL_dw.sym, nlp.pi.sym)
+            nlp.ddL_dwlam.sym = cs.jacobian(nlp.dL_dw.sym, nlp.lam_licq.sym)
 
             # Define the Lagrangian gradient with respect to the parameters
             # TODO: Add support for multivariable parameters
-            dL_dp = cs.jacobian(L, nlp.p.sym)
+            nlp.dL_dp.sym = cs.jacobian(nlp.L.sym, nlp.p.sym)
 
             # TODO: Move etau to solver options
             etau = 10e-8
@@ -285,30 +307,42 @@ class CasadiOcpSolver:
             z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam_licq.sym)
 
             # Build KKT matrix
-            R = cs.vertcat(cs.transpose(dL_dw), nlp.g.sym, nlp.lam_licq.sym * nlp.h.sym + etau)
+            nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.lam_licq.sym * nlp.h.sym + etau)
 
             # Generate sensitivity of the KKT matrix with respect to primal-dual variables
-            dR_dz = cs.jacobian(R, z)
-
-            # Generate sensitivity of the KKT matrix with respect to parameters
-            dR_dp = cs.jacobian(R, nlp.p.sym)
+            dR_dz = cs.jacobian(nlp.R.sym, z)
 
             fun = dict()
+            fun["dR_dw"] = cs.Function(
+                "dR_dw", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [cs.jacobian(nlp.R.sym, nlp.w.sym)]
+            )
+            fun["dR_dpi"] = cs.Function(
+                "dR_dpi", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [cs.jacobian(nlp.R.sym, nlp.pi.sym)]
+            )
+            fun["dR_dlam"] = cs.Function(
+                "dR_dlam",
+                [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.p.sym, nlp.p_solver.sym],
+                [cs.jacobian(nlp.R.sym, nlp.lam_licq.sym)],
+            )
+
+            # Generate sensitivity of the KKT matrix with respect to parameters
+            nlp.dR_dp.sym = cs.jacobian(nlp.R.sym, nlp.p.sym)
+
             fun["L"] = cs.Function(
                 "L",
                 [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.p_solver.sym],
-                [L],
+                [nlp.L.sym],
                 ["w", "lbw", "ubw", "pi", "lam", "p", "p_solver"],
                 ["L"],
             )
             fun["dL_dp"] = cs.Function(
                 "dL_dp",
                 [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.p_solver.sym],
-                [dL_dp],
+                [nlp.dL_dp.sym],
                 ["w", "pi", "lam", "p", "p_solver"],
                 ["dL_dp"],
             )
-            fun["dL_dw"] = cs.Function("dL_dw", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [dL_dw])
+            fun["dL_dw"] = cs.Function("dL_dw", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym], [nlp.dL_dw.sym])
 
             # fun["cost"] = cs.Function("cost", [nlp.w], [nlp.cost])
             fun["g"] = cs.Function("g", [nlp.w.sym, nlp.p.sym], [nlp.g.sym], ["w", "p"], ["g"])
@@ -329,7 +363,7 @@ class CasadiOcpSolver:
             # )
 
             fun["R"] = cs.Function(
-                "R", [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.p_solver.sym], [R]
+                "R", [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.p_solver.sym], [nlp.R.sym]
             )
 
             fun["z"] = cs.Function("z", [nlp.w.sym, nlp.pi.sym, nlp.lam.sym], [z], ["w", "pi", "lam"], ["z"])
@@ -345,9 +379,9 @@ class CasadiOcpSolver:
             fun["dR_dp"] = cs.Function(
                 "dR_dp",
                 [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym],
-                [dR_dp],
+                [nlp.dR_dp.sym],
                 ["w", "lbw", "ubw", "pi", "lam", "p"],
-                ["dR_dz"],
+                ["dR_dp"],
             )
 
             # fun["casadi"]["dR_dp"] = cs.Function("dR_dp", [z, nlp.p], [dR_dp])
@@ -399,6 +433,15 @@ class CasadiOcpSolver:
                     u_test = np.array([0.0])
 
             self.fun = fun
+
+            self.nlp = nlp
+
+            self.nlp.L.fun = fun["L"]
+            self.nlp.dL_dp.fun = fun["dL_dp"]
+            self.nlp.dL_dw.fun = fun["dL_dw"]
+            self.nlp.R.fun = fun["R"]
+            self.nlp.dR_dw.fun = fun["dR_dw"]
+            self.nlp.dR_dp.fun = fun["dR_dp"]
 
         # Create an NLP solver
         self.nlp_solver = cs.nlpsol(
@@ -484,13 +527,47 @@ class CasadiOcpSolver:
         """
 
         dR_dz = self.fun["dR_dz"](
-            self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val
+            self.nlp.w.val,
+            self.nlp.lbw.val,
+            self.nlp.ubw.val,
+            self.nlp.pi.val,
+            self.nlp.lam.val,
+            self.nlp.p.val,
+            self.nlp.p_solver.val,
         )
+
         dR_dp = self.fun["dR_dp"](
-            self.nlp.w.val, self.nlp.lbw.val, self.nlp.ubw.val, self.nlp.pi.val, self.nlp.lam.val, self.nlp.p.val
+            self.nlp.w.val,
+            self.nlp.lbw.val,
+            self.nlp.ubw.val,
+            self.nlp.pi.val,
+            self.nlp.lam.val,
+            self.nlp.p.val,
         )
 
         # dR_dz_inv = np.linalg.inv(dR_dz)
+
+        R = self.fun["R"](
+            self.nlp.w.val,
+            self.nlp.lbw.val,
+            self.nlp.ubw.val,
+            self.nlp.pi.val,
+            self.nlp.lam.val,
+            self.nlp.p.val,
+            self.nlp.p_solver.val,
+        )
+
+        # Check where R is zero
+
+        # Test if dR_dp is singular
+        if np.linalg.matrix_rank(dR_dp) != dR_dp.shape[0]:
+            print("dR_dp is singular")
+
+        # Test if dR_dz is singular
+        if np.linalg.matrix_rank(dR_dz) != dR_dz.shape[0]:
+            print("dR_dz is singular")
+
+        exit(0)
 
         dpi_dp_all = -np.linalg.inv(dR_dz) @ dR_dp
         dpi_dp = dpi_dp_all[: self.ocp.dims.nu]
@@ -1325,11 +1402,14 @@ def build_nlp(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
     idx["h"]["lslbx"] = []
     idx["h"]["lsubx"] = []
 
+    lam = []
+
     for stage_ in range(0, ocp.dims.N):
         print(stage_)
         if idxhbu:
             if stage_ == 0:
                 h += [lbu[stage_] - u[stage_]]
+
                 idx["h"]["lbu"].append([running_index + i for i in range(ocp.dims.nu)])
                 lam_entries += [entry("lbu", repeat=ocp.dims.N - 1, struct=struct_symSX(input_labels))]
                 running_index = idx["h"]["lbu"][-1][-1] + 1

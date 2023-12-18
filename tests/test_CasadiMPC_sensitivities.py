@@ -54,7 +54,7 @@ def test_dL_dp(mpc: CasadiMPC, p_test: np.ndarray, x0: np.ndarray, plot_: bool =
 
         # Q["true"][i] = mpc.q_ocp_solver.compute_state_action_value_function_value(state=x0, action=a0)
 
-        pi["true"][i] = mpc.get_action(x0=x0, solve=False)
+        # pi["true"][i] = mpc.get_action(x0=x0, solve=False)
 
         if i == 0:
             # L["approx"][i] = mpc.v_ocp_solver.compute_lagrange_function_value()
