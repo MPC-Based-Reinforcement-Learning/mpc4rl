@@ -55,14 +55,14 @@ class CostParams:
     Q: np.ndarray
     R: np.ndarray
     Q_e: np.ndarray
-    Zl: np.ndarray
-    Zu: np.ndarray
-    zl: np.ndarray
-    zu: np.ndarray
-    Zl_e: np.ndarray
-    Zu_e: np.ndarray
-    zl_e: np.ndarray
-    zu_e: np.ndarray
+    # Zl: np.ndarray
+    # Zu: np.ndarray
+    # zl: np.ndarray
+    # zu: np.ndarray
+    # Zl_e: np.ndarray
+    # Zu_e: np.ndarray
+    # zl_e: np.ndarray
+    # zu_e: np.ndarray
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -72,14 +72,14 @@ class CostParams:
             Q=np.diag(config_dict["Q"]),
             R=np.diag(config_dict["R"]),
             Q_e=np.diag(config_dict["Q_e"]),
-            Zl=np.diag(config_dict["Zl"]),
-            Zu=np.diag(config_dict["Zu"]),
-            zl=np.array(config_dict["zl"]),
-            zu=np.array(config_dict["zu"]),
-            Zl_e=np.diag(config_dict["Zl_e"]),
-            Zu_e=np.diag(config_dict["Zu_e"]),
-            zl_e=np.array(config_dict["zl_e"]),
-            zu_e=np.array(config_dict["zu_e"]),
+            # Zl=np.diag(config_dict["Zl"]),
+            # Zu=np.diag(config_dict["Zu"]),
+            # zl=np.array(config_dict["zl"]),
+            # zu=np.array(config_dict["zu"]),
+            # Zl_e=np.diag(config_dict["Zl_e"]),
+            # Zu_e=np.diag(config_dict["Zu_e"]),
+            # zl_e=np.array(config_dict["zl_e"]),
+            # zu_e=np.array(config_dict["zu_e"]),
         )
 
     def to_dict(self):
@@ -343,14 +343,14 @@ def define_cost(config: Config) -> dict:
 
     cost["Vx_e"] = np.eye(dims["nx"])
 
-    cost["Zl"] = config.cost.Zl
-    cost["Zu"] = config.cost.Zu
-    cost["zl"] = config.cost.zl
-    cost["zu"] = config.cost.zu
-    cost["Zl_e"] = config.cost.Zl_e
-    cost["Zu_e"] = config.cost.Zu_e
-    cost["zl_e"] = config.cost.zl_e
-    cost["zu_e"] = config.cost.zu_e
+    # cost["Zl"] = config.cost.Zl
+    # cost["Zu"] = config.cost.Zu
+    # cost["zl"] = config.cost.zl
+    # cost["zu"] = config.cost.zu
+    # cost["Zl_e"] = config.cost.Zl_e
+    # cost["Zu_e"] = config.cost.Zu_e
+    # cost["zl_e"] = config.cost.zl_e
+    # cost["zu_e"] = config.cost.zu_e
 
     return cost
 

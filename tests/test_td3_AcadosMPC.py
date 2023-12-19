@@ -23,7 +23,7 @@ from stable_baselines3.common.noise import (
 
 
 if __name__ == "__main__":
-    config = read_config("config/test_td3_interface.yaml")
+    config = read_config("config/test_td3_AcadosMPC.yaml")
 
     model_params = ModelParams.from_dict(config["mpc"]["model"]["params"])
 
@@ -37,9 +37,7 @@ if __name__ == "__main__":
 
     # The noise objects for TD3
     n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(
-        mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions)
-    )
+    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
     model = TD3(
         MPCTD3Policy,
