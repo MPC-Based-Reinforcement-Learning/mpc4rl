@@ -182,7 +182,7 @@ class Meta:
     """
 
     json_file: str = "acados_ocp.json"
-    c_code_export_directory: str = "c_generated_code"
+    code_export_dir: str = "c_generated_code"
 
     @classmethod
     def from_dict(cls, config_dict: dict):

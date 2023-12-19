@@ -1890,9 +1890,13 @@ class CasadiMPC(MPC):
 
         # self.ocp_solver = CasadiOcpSolver(self.ocp, build=build)
 
-        self.v_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="v_ocp_solver", code_export_dir=config.meta.c_code_export_directory)
+        self.v_ocp_solver = CasadiOcpSolver(
+            self.ocp, build=build, name="v_ocp_solver", code_export_dir=config.meta.code_export_dir
+        )
 
-        self.q_ocp_solver = CasadiOcpSolver(self.ocp, build=build, name="q_ocp_solver", code_export_dir=config.meta.c_code_export_directory)
+        self.q_ocp_solver = CasadiOcpSolver(
+            self.ocp, build=build, name="q_ocp_solver", code_export_dir=config.meta.code_export_dir
+        )
 
         self.parameter_values = self.ocp.parameter_values
 
