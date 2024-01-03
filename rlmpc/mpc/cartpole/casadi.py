@@ -5,6 +5,7 @@ from casadi.tools import struct_symMX, struct_MX, struct_symSX, struct_SX, entry
 from casadi.tools import *
 
 from rlmpc.common.mpc import MPC
+from rlmpc.mpc.cartpole.common import define_parameter_values, define_discrete_dynamics_function
 from rlmpc.mpc.utils import ERK4
 
 import matplotlib.pyplot as plt
@@ -15,6 +16,9 @@ from rlmpc.mpc.cartpole.common import (
     define_dimensions,
     define_cost,
     define_constraints,
+    define_stage_cost_function,
+    define_terminal_cost_function,
+    CasadiNLP,
     # define_parameters,
 )
 
@@ -37,196 +41,6 @@ from acados_template import (
 from casadi.tools.structure3 import CasadiStructureDerivable
 
 
-class CasadiNLPEntry:
-    """docstring for CasadiNLPEntry."""
-
-    sym: Union[cs.SX, cs.MX]
-    val: Union[list, np.ndarray]
-    fun: cs.Function
-
-    def __init__(self):
-        super().__init__()
-
-        self.sym = None
-        self.val = None
-        self.fun = None
-        # self.cat = None
-        # self.shape = None
-        # self.size = None
-        # self.type = None
-
-
-class CasadiNLP:
-    """docstring for CasadiNLP."""
-
-    cost: Union[cs.SX, cs.MX]
-    w: CasadiNLPEntry
-    lbw: CasadiNLPEntry
-    ubw: CasadiNLPEntry
-    lbw_solver: CasadiNLPEntry
-    ubw_solver: CasadiNLPEntry
-    g_solver: Union[cs.SX, cs.MX]
-    lbg_solver: Union[list, np.ndarray]
-    ubg_solver: Union[list, np.ndarray]
-    p: CasadiNLPEntry
-    p_solver: CasadiNLPEntry
-    p_val: Union[list, np.ndarray]
-    f_disc: cs.Function
-    shooting: struct_symSX
-    # g: Union[cs.SX, cs.MX]  # Dynamics equality constraints
-    g: CasadiNLPEntry  # Dynamics equality constraints
-    pi: CasadiNLPEntry  # Lange multiplier for dynamics equality constraints
-    h: CasadiNLPEntry  # Inequality constraints
-    h_licq: CasadiNLPEntry  # Inequality constraints
-    lam: CasadiNLPEntry  # Lange multiplier for inequality constraints
-    lam_licq: CasadiNLPEntry  # Lange multiplier for inequality constraints
-    idxhbx: list
-    idxsbx: list
-    idxhbu: list
-    idxsbu: list
-    L: CasadiNLPEntry
-    dL_dw: CasadiNLPEntry
-    dL_dp: CasadiNLPEntry
-    R: CasadiNLPEntry
-    dR_dw: CasadiNLPEntry
-    dR_dp: CasadiNLPEntry
-
-    def __init__(self):
-        super().__init__()
-
-        self.cost = None
-        self.w = CasadiNLPEntry()
-        self.lbw = CasadiNLPEntry()
-        self.ubw = CasadiNLPEntry()
-        self.lbw_solver = CasadiNLPEntry()
-        self.ubw_solver = CasadiNLPEntry()
-        self.g_solver = None
-        self.lbg_solver = None
-        self.ubg_solver = None
-        self.p_solver = CasadiNLPEntry()
-        self.p_val = None
-        self.p = CasadiNLPEntry()
-        self.f_disc = None
-        self.shooting = None
-        self.g = CasadiNLPEntry()
-        self.dg_dw = CasadiNLPEntry()
-        self.dg_dpi = CasadiNLPEntry()
-        self.dg_dlam = CasadiNLPEntry()
-        self.pi = CasadiNLPEntry()
-        self.h = CasadiNLPEntry()
-        self.h_licq = CasadiNLPEntry()
-        self.lam = CasadiNLPEntry()
-        self.lam_licq = CasadiNLPEntry()
-        self.idxhbx = None
-        self.idxsbx = None
-        self.idxhbu = None
-        self.idxsbu = None
-        self.L = CasadiNLPEntry()
-        self.dL_dw = CasadiNLPEntry()
-        self.ddL_dwdw = CasadiNLPEntry()
-        self.ddL_dwdpi = CasadiNLPEntry()
-        self.ddL_dwdlam = CasadiNLPEntry()
-        self.dL_dp = CasadiNLPEntry()
-        self.R = CasadiNLPEntry()
-        self.dR_dw = CasadiNLPEntry()
-        self.dR_dp = CasadiNLPEntry()
-
-
-class CasadiModel(AcadosModel):
-    """docstring for CasadiModel."""
-
-    def __init__(self):
-        super().__init__()
-
-
-class CasadiOcpDims(AcadosOcpDims):
-    """docstring for CasadiOcpDims."""
-
-    def __init__(self):
-        super().__init__()
-
-
-class CasadiOcpConstraints(AcadosOcpConstraints):
-    """docstring for CasadiOcpConstraints."""
-
-    Jbx: np.ndarray
-
-    def __init__(self):
-        super().__init__()
-
-
-class CasadiOcpCost(AcadosOcpCost):
-    """docstring for CasadiOcpCost."""
-
-    def __init__(self):
-        super().__init__()
-
-
-class CasadiOcpOptions(AcadosOcpOptions):
-    """docstring for CasadiOcpOptions."""
-
-    def __init__(self):
-        super().__init__()
-
-
-class CasadiOcp(AcadosOcp):
-    """docstring for CasadiOcp."""
-
-    model: CasadiModel
-    dims: CasadiOcpDims
-    constraints: CasadiOcpConstraints
-    cost: CasadiOcpCost
-    solver_options: CasadiOcpOptions
-
-    def __init__(self):
-        super().__init__()
-
-        self.model = CasadiModel()
-        self.dims = CasadiOcpDims()
-        self.constraints = CasadiOcpConstraints()
-        self.cost = CasadiOcpCost()
-        self.solver_options = CasadiOcpOptions()
-
-
-def idx_to_J(shape: tuple, idx: np.ndarray) -> np.ndarray:
-    J = np.zeros(shape)
-    for k, idx in enumerate(idx):
-        J[k, idx] = 1
-    return J
-
-
-def get_Jbx(ocp: CasadiOcp) -> np.ndarray:
-    # Jbx = np.zeros((ocp.constraints.idxbx.shape[0], ocp.dims.nx))
-    # for k, idx in enumerate(ocp.constraints.idxbx):
-    #     Jbx[k, idx] = 1
-    # return Jbx
-    return idx_to_J((ocp.constraints.idxbx.shape[0], ocp.dims.nx), ocp.constraints.idxbx)
-
-
-def get_Jbu(ocp: CasadiOcp) -> np.ndarray:
-    # Jbu = np.zeros((ocp.constraints.idxbu.shape[0], ocp.dims.nu))
-    # for k, idx in enumerate(ocp.constraints.idxbu):
-    #     Jbu[k, idx] = 1
-    # return Jbu
-    return idx_to_J((ocp.constraints.idxbu.shape[0], ocp.dims.nu), ocp.constraints.idxbu)
-
-
-def get_Jsbx(ocp: CasadiOcp) -> np.ndarray:
-    # Jsbx = np.zeros((ocp.constraints.idxsbx.shape[0], ocp.dims.nx))
-    # for k, idx in enumerate(ocp.constraints.idxsbx):
-    #     Jsbx[k, idx] = 1
-    # return Jsbx
-    return idx_to_J((ocp.constraints.idxsbx.shape[0], ocp.dims.nx), ocp.constraints.idxsbx)
-
-
-def get_Jsbu(ocp: CasadiOcp) -> np.ndarray:
-    # Jsbu = np.zeros((ocp.constraints.idxsbu.shape[0], ocp.dims.nu))
-    # for k, idx in enumerate(ocp.constraints.idxsbu):
-    #     Jsbu[k, idx] = 1
-    # return Jsbu
-    return idx_to_J((ocp.constraints.idxsbu.shape[0], ocp.dims.nu), ocp.constraints.idxsbu)
-
-
 class CasadiOcpSolver:
     """docstring for CasadiOcp."""
 
@@ -234,7 +48,7 @@ class CasadiOcpSolver:
     # _cost: cs.Function
     # _constraints: cs.Function
 
-    ocp: CasadiOcp
+    ocp: AcadosOcp
     nlp: CasadiNLP
     p: np.ndarray
     nlp_solution: dict
@@ -244,14 +58,14 @@ class CasadiOcpSolver:
 
     # Use generate and build mehods to implement jit compilation
     @classmethod
-    def generate(cls, casadi_ocp: CasadiOcp):
+    def generate(cls, acados_ocp: AcadosOcp):
         pass
 
     @classmethod
-    def build(cls, casadi_ocp: CasadiOcp):
+    def build(cls, acados_ocp: AcadosOcp):
         pass
 
-    def __init__(self, _ocp: CasadiOcp, build, name: str = "ocp_solver", code_export_dir: str = "c_generated_code"):
+    def __init__(self, _ocp: AcadosOcp, build, name: str = "ocp_solver", code_export_dir: str = "c_generated_code"):
         super().__init__()
 
         # self._ocp.model, self._ocp.parameter_values = define_acados_model(
@@ -1087,34 +901,6 @@ def build_discrete_dynamics_functions(
     return (xf, f, df_dp)
 
 
-def define_discrete_dynamics_function(ocp: CasadiOcp) -> cs.Function:
-    # Step size.
-    h = ocp.solver_options.tf / ocp.dims.N / ocp.solver_options.sim_method_num_stages
-
-    x = ocp.model.x
-    u = ocp.model.u
-    p = ocp.model.p
-    f_expl = ocp.model.f_expl_expr
-
-    # Continuous dynamics function.
-    f = cs.Function("f", [x, u, p], [f_expl])
-
-    # TODO: Add support for other integrator types
-    # Integrate given amount of steps over the interval with Runge-Kutta 4 scheme
-    if ocp.solver_options.integrator_type == "ERK":
-        for _ in range(ocp.solver_options.sim_method_num_steps):
-            k1 = f(x, u, p)
-            k2 = f(x + h / 2 * k1, u, p)
-            k3 = f(x + h / 2 * k2, u, p)
-            k4 = f(x + h * k3, u, p)
-
-            xnext = x + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-
-        return cs.Function("F", [x, u, p], [xnext])
-    else:
-        raise NotImplementedError("Only ERK integrator types are supported at the moment.")
-
-
 # def define_stage_cost_function(ocp: CasadiOcp) -> cs.Function:
 #     model = ocp.model
 #     cost = ocp.cost
@@ -1144,55 +930,6 @@ def define_discrete_dynamics_function(ocp: CasadiOcp) -> cs.Function:
 #         return stage_cost_function
 
 
-def define_stage_cost_function(
-    x: cs.SX,
-    u: cs.SX,
-    sl: cs.SX,
-    su: cs.SX,
-    yref: cs.SX,
-    W: np.ndarray,
-    Zl: np.ndarray,
-    Zu: np.ndarray,
-    zl: np.ndarray,
-    zu: np.ndarray,
-    cost: CasadiOcpCost,
-    slack: bool = False,
-) -> cs.SX:
-    if cost.cost_type == "LINEAR_LS":
-        y = cs.mtimes([cost.Vx, x]) + cs.mtimes([cost.Vu, u])
-
-        cost = 0
-        cost += cs.mtimes([(y - yref).T, W, (y - yref)])
-        if slack:
-            cost += cs.mtimes([sl.T, Zl, sl])
-            cost += cs.mtimes([su.T, Zu, su])
-            cost += cs.mtimes([sl.T, zl])
-            cost += cs.mtimes([su.T, zu])
-
-        if slack:
-            stage_cost = cs.Function(
-                "l",
-                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
-                [x, u, sl, su],
-                [cost],
-                ["x", "u", "sl", "su"],
-                ["out"],
-            )
-        else:
-            stage_cost = cs.Function(
-                "l",
-                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
-                [x, u],
-                [cost],
-                ["x", "u"],
-                ["out"],
-            )
-
-        return stage_cost
-    else:
-        raise NotImplementedError("Only LINEAR_LS cost types are supported at the moment.")
-
-
 # def define_terminal_cost_function(ocp: CasadiOcp) -> cs.Function:
 #     model = ocp.model
 #     cost = ocp.cost
@@ -1216,55 +953,7 @@ def define_stage_cost_function(
 #         return terminal_cost_function
 
 
-def define_terminal_cost_function(
-    x_e: cs.SX,
-    sl_e: cs.SX,
-    su_e: cs.SX,
-    yref_e: cs.SX,
-    W_e: np.ndarray,
-    Zl_e: np.ndarray,
-    Zu_e: np.ndarray,
-    zl_e: np.ndarray,
-    zu_e: np.ndarray,
-    cost: CasadiOcpCost,
-    slack: bool = False,
-) -> cs.SX:
-    if cost.cost_type == "LINEAR_LS":
-        y_e = cs.mtimes([cost.Vx_e, x_e])
-
-        cost = 0
-        cost += cs.mtimes([(y_e - yref_e).T, W_e, (y_e - yref_e)])
-
-        if slack:
-            cost += cs.mtimes([sl_e.T, Zl_e, sl_e])
-            cost += cs.mtimes([su_e.T, Zu_e, su_e])
-            cost += cs.mtimes([sl_e.T, zl_e])
-            cost += cs.mtimes([su_e.T, zu_e])
-
-            terminal_cost = cs.Function(
-                "m",
-                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
-                [x_e, sl_e, su_e],
-                [cost],
-                ["x_e", "sl_e", "su_e"],
-                ["out"],
-            )
-        else:
-            terminal_cost = cs.Function(
-                "m",
-                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
-                [x_e],
-                [cost],
-                ["x_e"],
-                ["out"],
-            )
-
-        return terminal_cost
-    else:
-        raise NotImplementedError("Only LINEAR_LS cost types are supported at the moment.")
-
-
-def build_nlp(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
+def build_nlp(ocp: AcadosOcp) -> (CasadiNLP, dict, dict):
     """
     Build the NLP for the OCP.
 
@@ -1841,41 +1530,43 @@ def build_nlp(ocp: CasadiOcp) -> (CasadiNLP, dict, dict):
     return nlp, idx
 
 
-def build_lagrange_function(nlp: CasadiNLP, ocp: CasadiOcp) -> cs.Function:
+def build_lagrange_function(nlp: CasadiNLP, ocp: AcadosOcp) -> cs.Function:
     pass
 
 
-def build_kkt_residual_function(ocp: CasadiOcp) -> cs.Function:
+def build_kkt_residual_function(ocp: AcadosOcp) -> cs.Function:
     pass
 
 
-def build_policy_gradient_function(ocp: CasadiOcp) -> cs.Function:
+def build_policy_gradient_function(ocp: AcadosOcp) -> cs.Function:
     pass
 
 
-def build_state_action_value_function(ocp: CasadiOcp) -> cs.Function:
+def build_state_action_value_function(ocp: AcadosOcp) -> cs.Function:
     pass
 
 
-def build_state_value_function(ocp: CasadiOcp) -> cs.Function:
+def build_state_value_function(ocp: AcadosOcp) -> cs.Function:
     pass
 
 
 class CasadiMPC(MPC):
     """docstring for CartpoleMPC."""
 
-    ocp: CasadiOcp
+    ocp: AcadosOcp
     ocp_solver: CasadiOcpSolver
     parameter_values: np.ndarray
 
     parameter_values: np.ndarray
 
-    def __init__(self, config: Config, build: bool = True):
+    def __init__(self, config: Config, build: bool = False):
         super().__init__()
 
-        self.ocp = CasadiOcp()
+        self.ocp = AcadosOcp()
 
-        self.ocp.model, self.ocp.parameter_values = define_acados_model(ocp=self.ocp, config=config)
+        self.ocp.model = define_acados_model(ocp=self.ocp, config=config)
+
+        self.ocp.parameter_values = define_parameter_values(ocp=self.ocp, config=config)
 
         self.ocp.cost = define_acados_cost(ocp=self.ocp, config=config)
 

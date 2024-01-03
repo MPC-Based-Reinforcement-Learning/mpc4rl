@@ -8,7 +8,7 @@ mpc:
     tf: 3.0
     qp_solver: PARTIAL_CONDENSING_HPIPM
     hessian_approx: GAUSS_NEWTON
-    integrator_type: ERK
+    integrator_type: DISCRETE
     sim_method_num_stages: 4
     nlp_solver_type: SQP
     nlp_solver_max_iter: 200

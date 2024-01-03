@@ -21,7 +21,7 @@
             "justMyCode": true
         },
         {
-            "name": "Python: test_AcadosMPC",
+            "name": "Python: test_td3_AcadosMPC",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tests/test_td3_AcadosMPC.py",
@@ -36,5 +36,21 @@
             "console": "integratedTerminal",
             "justMyCode": true
         },
+        {
+            "name": "Python: test_AcadosMPC_sensitivities",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/test_AcadosMPC_sensitivities.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: test_AcadosMPC",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/test_AcadosMPC.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
     ]
 }

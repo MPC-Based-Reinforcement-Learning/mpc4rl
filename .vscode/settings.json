@@ -82,6 +82,10 @@
         127
     ],
     "vim.textwidth": 127,
+    "flake8.args": [
+        "--max-line-length=127",
+        "--ignore=F401"
+    ],
     // Hide latex auto generated files
     // "files.exclude": {
     // "**/*.blg": true,
