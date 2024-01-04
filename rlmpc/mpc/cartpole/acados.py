@@ -787,6 +787,13 @@ class AcadosMPC(MPC):
 
         self._parameters = ocp.parameter_values
 
+    def reset(self, x0: np.ndarray):
+        self.ocp_solver.reset()
+
+        for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+            # self.ocp_solver.set(stage, "x", self.ocp_solver.acados_ocp.constraints.lbx_0)
+            self.ocp_solver.set(stage, "x", x0)
+
     def set(self, stage, field, value):
         self.ocp_solver.set(stage, field, value)
         self.nlp.set(stage, field, value)
