@@ -156,9 +156,7 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             dtype=np.float32,
         )
 
-        self.action_space = spaces.Box(
-            low=self.min_action, high=self.max_action, shape=(1,)
-        )
+        self.action_space = spaces.Box(low=self.min_action, high=self.max_action, shape=(1,))
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         self.render_mode = render_mode
@@ -173,9 +171,7 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         self.steps_beyond_terminated = None
 
     def step(self, action):
-        assert self.action_space.contains(
-            action
-        ), f"{action!r} ({type(action)}) invalid"
+        assert self.action_space.contains(action), f"{action!r} ({type(action)}) invalid"
         assert self.state is not None, "Call reset before using step method."
         x, x_dot, theta, theta_dot = self.state
 
@@ -186,9 +182,7 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
 
         # For the interested reader:
         # https://coneural.org/florian/papers/05_cart_pole.pdf
-        temp = (
-            force + self.polemass_length * theta_dot**2 * sintheta
-        ) / self.total_mass
+        temp = (force + self.polemass_length * theta_dot**2 * sintheta) / self.total_mass
 
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
             self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass)
@@ -246,9 +240,7 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         super().reset(seed=seed)
         # Note that if you use custom reset bounds, it may lead to out-of-bound
         # state/observations.
-        low, high = maybe_parse_reset_bounds(
-            options, -0.05, 0.05  # default low
-        )  # default high
+        low, high = maybe_parse_reset_bounds(options, -0.05, 0.05)  # default low  # default high
         self.state = self.np_random.uniform(low=low, high=high, size=(4,))
         self.steps_beyond_terminated = None
 
@@ -270,17 +262,13 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             import pygame
             from pygame import gfxdraw
         except ImportError as e:
-            raise DependencyNotInstalled(
-                "pygame is not installed, run `pip install gymnasium[classic-control]`"
-            ) from e
+            raise DependencyNotInstalled("pygame is not installed, run `pip install gymnasium[classic-control]`") from e
 
         if self.screen is None:
             pygame.init()
             if self.render_mode == "human":
                 pygame.display.init()
-                self.screen = pygame.display.set_mode(
-                    (self.screen_width, self.screen_height)
-                )
+                self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
             else:  # mode == "rgb_array"
                 self.screen = pygame.Surface((self.screen_width, self.screen_height))
         if self.clock is None:
@@ -350,9 +338,7 @@ class ContinuousCartPoleBalanceEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             pygame.display.flip()
 
         elif self.render_mode == "rgb_array":
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
-            )
+            return np.transpose(np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2))
 
     def close(self):
         if self.screen is not None:
@@ -412,9 +398,7 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
         self.low = -0.05
         self.high = 0.05
 
-        self.single_action_space = spaces.Box(
-            low=self.min_action, high=self.max_action, shape=(1,)
-        )
+        self.single_action_space = spaces.Box(low=self.min_action, high=self.max_action, shape=(1,))
         self.action_space = batch_space(self.single_action_space, num_envs)
 
         self.single_observation_space = spaces.Box(-high, high, dtype=np.float32)
@@ -431,12 +415,8 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
 
         self.steps_beyond_terminated = None
 
-    def step(
-        self, action: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
-        assert self.action_space.contains(
-            action
-        ), f"{action!r} ({type(action)}) invalid"
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
+        assert self.action_space.contains(action), f"{action!r} ({type(action)}) invalid"
         assert self.state is not None, "Call reset before using step method."
 
         x, x_dot, theta, theta_dot = self.state
@@ -447,9 +427,7 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
 
         # For the interested reader:
         # https://coneural.org/florian/papers/05_cart_pole.pdf
-        temp = (
-            force + self.polemass_length * theta_dot**2 * sintheta
-        ) / self.total_mass
+        temp = (force + self.polemass_length * theta_dot**2 * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
             self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass)
         )
@@ -483,9 +461,7 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
 
         if any(done):
             # This code was generated by copilot, need to check if it works
-            self.state[:, done] = self.np_random.uniform(
-                low=self.low, high=self.high, size=(4, done.sum())
-            ).astype(np.float32)
+            self.state[:, done] = self.np_random.uniform(low=self.low, high=self.high, size=(4, done.sum())).astype(np.float32)
             self.steps[done] = 0
 
         reward = np.ones_like(terminated, dtype=np.float32)
@@ -504,12 +480,8 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
         super().reset(seed=seed)
         # Note that if you use custom reset bounds, it may lead to out-of-bound
         # state/observations.
-        self.low, self.high = utils.maybe_parse_reset_bounds(
-            options, -0.05, 0.05  # default low
-        )  # default high
-        self.state = self.np_random.uniform(
-            low=self.low, high=self.high, size=(4, self.num_envs)
-        ).astype(np.float32)
+        self.low, self.high = utils.maybe_parse_reset_bounds(options, -0.05, 0.05)  # default low  # default high
+        self.state = self.np_random.uniform(low=self.low, high=self.high, size=(4, self.num_envs)).astype(np.float32)
         self.steps_beyond_terminated = None
 
         if self.render_mode == "human":
@@ -529,23 +501,15 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
             import pygame
             from pygame import gfxdraw
         except ImportError:
-            raise DependencyNotInstalled(
-                "pygame is not installed, run `pip install gymnasium[classic_control]`"
-            )
+            raise DependencyNotInstalled("pygame is not installed, run `pip install gymnasium[classic_control]`")
 
         if self.screens is None:
             pygame.init()
             if self.render_mode == "human":
                 pygame.display.init()
-                self.screens = [
-                    pygame.display.set_mode((self.screen_width, self.screen_height))
-                    for _ in range(self.num_envs)
-                ]
+                self.screens = [pygame.display.set_mode((self.screen_width, self.screen_height)) for _ in range(self.num_envs)]
             else:  # mode == "rgb_array"
-                self.screens = [
-                    pygame.Surface((self.screen_width, self.screen_height))
-                    for _ in range(self.num_envs)
-                ]
+                self.screens = [pygame.Surface((self.screen_width, self.screen_height)) for _ in range(self.num_envs)]
         if self.clocks is None:
             self.clock = [pygame.time.Clock() for _ in range(self.num_envs)]
 
@@ -615,12 +579,7 @@ class ContinuousCartPoleBalanceVectorEnv(VectorEnv):
             pygame.display.flip()
 
         elif self.render_mode == "rgb_array":
-            return [
-                np.transpose(
-                    np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2)
-                )
-                for screen in self.screens
-            ]
+            return [np.transpose(np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2)) for screen in self.screens]
 
     def close(self):
         if self.screens is not None:
@@ -761,9 +720,10 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         self.min_action = min_action  #  [N] Minimum force applied to the system
         self.max_action = max_action  #  [N] Maximum force applied to the system
 
-        # Angle at which to fail the episode
-        self.theta_threshold_radians = 360 * 2 * math.pi / 360
-        self.x_threshold = 2.4
+        # Angle at which to finish the episode
+        # self.theta_threshold_radians = 360 * 2 * math.pi / 360
+        self.theta_threshold_radians = np.deg2rad(2)
+        self.x_threshold = 0.1
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation
         # is still within bounds.
@@ -777,9 +737,7 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             dtype=np.float32,
         )
 
-        self.action_space = spaces.Box(
-            low=self.min_action, high=self.max_action, shape=(1,)
-        )
+        self.action_space = spaces.Box(low=self.min_action, high=self.max_action, shape=(1,))
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         self.render_mode = render_mode
@@ -794,9 +752,7 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         self.steps_beyond_terminated = None
 
     def step(self, action):
-        assert self.action_space.contains(
-            action
-        ), f"{action!r} ({type(action)}) invalid"
+        assert self.action_space.contains(action), f"{action!r} ({type(action)}) invalid"
         assert self.state is not None, "Call reset before using step method."
         x, x_dot, theta, theta_dot = self.state
 
@@ -807,9 +763,7 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
 
         # For the interested reader:
         # https://coneural.org/florian/papers/05_cart_pole.pdf
-        temp = (
-            force + self.polemass_length * theta_dot**2 * sintheta
-        ) / self.total_mass
+        temp = (force + self.polemass_length * theta_dot**2 * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
             self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass)
         )
@@ -828,12 +782,26 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
 
         self.state = (x, x_dot, theta, theta_dot)
 
+        # terminated = bool(
+        #     x < -self.x_threshold
+        #     or x > self.x_threshold
+        #     or theta < -self.theta_threshold_radians
+        #     or theta > self.theta_threshold_radians
+        # )
+
         terminated = bool(
-            x < -self.x_threshold
-            or x > self.x_threshold
-            or theta < -self.theta_threshold_radians
-            or theta > self.theta_threshold_radians
+            -self.x_threshold < x
+            and x < self.x_threshold
+            and -self.theta_threshold_radians < theta
+            and theta < self.theta_threshold_radians
+            and -0.1 < theta_dot
+            and theta_dot < 0.1
+            and -0.1 < x_dot
+            and x_dot < 0.1
         )
+
+        # if terminated:
+        #     reward = 0.0
 
         if not terminated:
             # reward = 1.0
@@ -867,11 +835,11 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         super().reset(seed=seed)
         # Note that if you use custom reset bounds, it may lead to out-of-bound
         # state/observations.
-        low, high = maybe_parse_reset_bounds(
-            options, -0.05, 0.05  # default low
-        )  # default high
-        low = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
-        high = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
+        # low, high = maybe_parse_reset_bounds(options, -0.05, 0.05)  # default low  # default high
+        # low = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
+        # high = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
+        low = np.array([-0.5, -0.1, 0.7 * np.pi, -0.1], dtype=np.float32)
+        high = np.array([0.5, 0.1, 1.3 * np.pi, 0.1], dtype=np.float32)
         self.state = self.np_random.uniform(low=low, high=high, size=(4,))
         self.steps_beyond_terminated = None
 
@@ -906,17 +874,13 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             import pygame
             from pygame import gfxdraw
         except ImportError as e:
-            raise DependencyNotInstalled(
-                "pygame is not installed, run `pip install gymnasium[classic-control]`"
-            ) from e
+            raise DependencyNotInstalled("pygame is not installed, run `pip install gymnasium[classic-control]`") from e
 
         if self.screen is None:
             pygame.init()
             if self.render_mode == "human":
                 pygame.display.init()
-                self.screen = pygame.display.set_mode(
-                    (self.screen_width, self.screen_height)
-                )
+                self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
             else:  # mode == "rgb_array"
                 self.screen = pygame.Surface((self.screen_width, self.screen_height))
         if self.clock is None:
@@ -986,9 +950,7 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             pygame.display.flip()
 
         elif self.render_mode == "rgb_array":
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
-            )
+            return np.transpose(np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2))
 
     def close(self):
         if self.screen is not None:
@@ -1053,9 +1015,7 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
         self.low = -0.05
         self.high = 0.05
 
-        self.single_action_space = spaces.Box(
-            low=self.min_action, high=self.max_action, shape=(1,)
-        )
+        self.single_action_space = spaces.Box(low=self.min_action, high=self.max_action, shape=(1,))
         self.action_space = batch_space(self.single_action_space, num_envs)
 
         self.single_observation_space = spaces.Box(-high, high, dtype=np.float32)
@@ -1072,12 +1032,8 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
 
         self.steps_beyond_terminated = None
 
-    def step(
-        self, action: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
-        assert self.action_space.contains(
-            action
-        ), f"{action!r} ({type(action)}) invalid"
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
+        assert self.action_space.contains(action), f"{action!r} ({type(action)}) invalid"
         assert self.state is not None, "Call reset before using step method."
 
         x, x_dot, theta, theta_dot = self.state
@@ -1088,9 +1044,7 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
 
         # For the interested reader:
         # https://coneural.org/florian/papers/05_cart_pole.pdf
-        temp = (
-            force + self.polemass_length * theta_dot**2 * sintheta
-        ) / self.total_mass
+        temp = (force + self.polemass_length * theta_dot**2 * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
             self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass)
         )
@@ -1124,14 +1078,10 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
 
         if any(done):
             # This code was generated by copilot, need to check if it works
-            self.state[:, done] = self.np_random.uniform(
-                low=self.low, high=self.high, size=(4, done.sum())
-            ).astype(np.float32)
+            self.state[:, done] = self.np_random.uniform(low=self.low, high=self.high, size=(4, done.sum())).astype(np.float32)
             self.steps[done] = 0
 
-        reward = np.ones_like(terminated, dtype=np.float32) * self._reward_fn(
-            self.state, action
-        )
+        reward = np.ones_like(terminated, dtype=np.float32) * self._reward_fn(self.state, action)
 
         if self.render_mode == "human":
             self.render()
@@ -1153,9 +1103,7 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
         self.low = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
         self.high = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
 
-        self.state = self.np_random.uniform(
-            low=self.low, high=self.high, size=(4, self.num_envs)
-        ).astype(np.float32)
+        self.state = self.np_random.uniform(low=self.low, high=self.high, size=(4, self.num_envs)).astype(np.float32)
         self.steps_beyond_terminated = None
 
         if self.render_mode == "human":
@@ -1185,23 +1133,15 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
             import pygame
             from pygame import gfxdraw
         except ImportError:
-            raise DependencyNotInstalled(
-                "pygame is not installed, run `pip install gymnasium[classic_control]`"
-            )
+            raise DependencyNotInstalled("pygame is not installed, run `pip install gymnasium[classic_control]`")
 
         if self.screens is None:
             pygame.init()
             if self.render_mode == "human":
                 pygame.display.init()
-                self.screens = [
-                    pygame.display.set_mode((self.screen_width, self.screen_height))
-                    for _ in range(self.num_envs)
-                ]
+                self.screens = [pygame.display.set_mode((self.screen_width, self.screen_height)) for _ in range(self.num_envs)]
             else:  # mode == "rgb_array"
-                self.screens = [
-                    pygame.Surface((self.screen_width, self.screen_height))
-                    for _ in range(self.num_envs)
-                ]
+                self.screens = [pygame.Surface((self.screen_width, self.screen_height)) for _ in range(self.num_envs)]
         if self.clocks is None:
             self.clock = [pygame.time.Clock() for _ in range(self.num_envs)]
 
@@ -1271,12 +1211,7 @@ class ContinuousCartPoleSwingUpVectorEnv(VectorEnv):
             pygame.display.flip()
 
         elif self.render_mode == "rgb_array":
-            return [
-                np.transpose(
-                    np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2)
-                )
-                for screen in self.screens
-            ]
+            return [np.transpose(np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2)) for screen in self.screens]
 
     def close(self):
         if self.screens is not None:
