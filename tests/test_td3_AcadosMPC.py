@@ -59,12 +59,19 @@ if __name__ == "__main__":
     buffer_size = 10000  # Size of the replay buffer
     replay_buffer = ReplayBuffer(buffer_size, env.observation_space, env.action_space)
 
-    for _ in range(100):
+    nstep = 1000
+
+    for _ in range(nstep):
         action, _ = model.predict(obs)
         next_obs, reward, done, info = vec_env.step(action)
         replay_buffer.add(obs=obs, next_obs=next_obs, action=action, reward=reward, done=done, infos=info)
         obs = next_obs
-        vec_env.render("human")
+
+        if done:
+            obs = vec_env.reset()
+            model.policy.actor.mpc.reset(obs[0])
+
+        # vec_env.render("human")
 
     print("Done with data collection.")
 
@@ -74,10 +81,26 @@ if __name__ == "__main__":
     X = np.vstack(replay_buffer.observations)
     U = np.vstack(replay_buffer.actions)
 
-    fig, ax = plt.subplots()
-    ax.plot(X[:, 0])
-    ax.plot(X[:, 1])
-    ax.plot(X[:, 2])
-    ax.plot(X[:, 3])
-    ax.plot(U)
+    reward = np.vstack(replay_buffer.rewards)
+    done = np.vstack(replay_buffer.dones)
+
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
+    axes[0].plot(X[:nstep, 0])
+    axes[0].plot(X[:nstep, 1])
+    axes[0].plot(X[:nstep, 2])
+    axes[0].plot(X[:nstep, 3])
+    axes[1].plot(U[:nstep])
+    axes[2].plot(reward[:nstep])
+
+    # Where done == 1, plot a vertical bar in axes[0], and axes[1]
+    idx = np.where(done[:nstep] == 1)[0]
+
+    for ax in axes:
+        for i in idx:
+            ax.axvline(i, color="k", linestyle="-", linewidth=1)
+
+    axes[0].grid()
+    axes[1].grid()
+    axes[2].grid()
+
     plt.show()

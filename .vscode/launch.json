@@ -51,6 +51,14 @@
             "program": "${workspaceFolder}/tests/test_AcadosMPC.py",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Python: test_AcadosMPC_QLearning",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/test_AcadosMPC_QLearning.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }
