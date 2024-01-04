@@ -813,6 +813,40 @@ class AcadosMPC(MPC):
 
     #     return status
 
+    def q_update(self, x0: np.ndarray, u0: np.ndarray) -> int:
+        """
+        Update the solution of the OCP solver.
+
+        Args:
+            x0: Initial state.
+
+        Returns:
+            status: Status of the solver.
+        """
+        # Set initial state
+        self.ocp_solver.set(0, "lbx", x0)
+        self.ocp_solver.set(0, "ubx", x0)
+
+        self.nlp.lbw.val["lbx", 0] = x0
+        self.nlp.ubw.val["ubx", 0] = x0
+
+        # Set initial action (needed for state-action value)
+        self.ocp_solver.set(0, "u", u0)
+        self.ocp_solver.set(0, "lbu", u0)
+        self.ocp_solver.set(0, "ubu", u0)
+
+        self.nlp.lbw.val["lbu", 0] = u0
+        self.nlp.ubw.val["ubu", 0] = u0
+
+        # Solve the optimization problem
+        status = self.ocp_solver.solve()
+
+        self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+
+        # test_nlp_sanity(self.nlp)
+
+        return status
+
     def update(self, x0: np.ndarray) -> int:
         """
         Update the solution of the OCP solver.
@@ -862,6 +896,50 @@ class AcadosMPC(MPC):
             L: Lagrangian.
         """
         return self.nlp.L.val
+
+    def get_V(self) -> float:
+        """
+        Get the value of the value function.
+
+        Assumes OCP is solved for state.
+
+        Returns:
+            V: Value function.
+        """
+        return self.ocp_solver.get_cost()
+
+    def get_dV_dp(self) -> float:
+        """
+        Get the value of the sensitivity of the value function with respect to the parameters.
+
+        Assumes OCP is solved for state and parameters.
+
+        Returns:
+            dV_dp: Sensitivity of the value function with respect to the parameters.
+        """
+        return self.get_dL_dp()
+
+    def get_Q(self) -> float:
+        """
+        Get the value of the state-action value function.
+
+        Assumes OCP is solved for state and action.
+
+        Returns:
+            Q: State-action value function.
+        """
+        return self.ocp_solver.get_cost()
+
+    def get_dQ_dp(self) -> float:
+        """
+        Get the value of the sensitivity of the state-action value function with respect to the parameters.
+
+        Assumes OCP is solved for state, action and parameters.
+
+        Returns:
+            dQ_dp: Sensitivity of the state-action value function with respect to the parameters.
+        """
+        return self.get_dL_dp()
 
     def get_action(self, x0: np.ndarray) -> np.ndarray:
         """

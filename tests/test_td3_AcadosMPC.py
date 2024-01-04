@@ -20,10 +20,13 @@ from stable_baselines3 import TD3
 from stable_baselines3.common.noise import (
     NormalActionNoise,
 )
+from stable_baselines3.common.buffers import ReplayBuffer
 
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
-    config = read_config("config/test_td3_AcadosMPC.yaml")
+    # config = read_config("config/test_td3_AcadosMPC.yaml")
+    config = read_config("config/test_AcadosMPC.yaml")
 
     model_params = ModelParams.from_dict(config["mpc"]["model"]["params"])
 
@@ -52,7 +55,29 @@ if __name__ == "__main__":
 
     obs = vec_env.reset()
 
-    for _ in range(200):
+    # Initialize ReplayBuffer
+    buffer_size = 10000  # Size of the replay buffer
+    replay_buffer = ReplayBuffer(buffer_size, env.observation_space, env.action_space)
+
+    for _ in range(100):
         action, _ = model.predict(obs)
-        obs, rewards, dones, info = vec_env.step(action)
+        next_obs, reward, done, info = vec_env.step(action)
+        replay_buffer.add(obs=obs, next_obs=next_obs, action=action, reward=reward, done=done, infos=info)
+        obs = next_obs
         vec_env.render("human")
+
+    print("Done with data collection.")
+
+    obs = np.array(replay_buffer.observations)
+
+    # Stack observations vertically in a matrix
+    X = np.vstack(replay_buffer.observations)
+    U = np.vstack(replay_buffer.actions)
+
+    fig, ax = plt.subplots()
+    ax.plot(X[:, 0])
+    ax.plot(X[:, 1])
+    ax.plot(X[:, 2])
+    ax.plot(X[:, 3])
+    ax.plot(U)
+    plt.show()

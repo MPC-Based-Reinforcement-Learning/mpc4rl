@@ -1,0 +1,72 @@
+mpc:
+  id: cartpole
+  # acados_settings:
+  meta:
+    json_file: c_generated_code/acados_mpc/cartpole_ocp.json
+    code_export_dir: c_generated_code/acados_mpc
+  ocp_options:
+    tf: 1.0
+    qp_solver: PARTIAL_CONDENSING_HPIPM
+    hessian_approx: GAUSS_NEWTON
+    integrator_type: ERK
+    sim_method_num_stages: 4
+    nlp_solver_type: SQP
+    nlp_solver_max_iter: 200
+    qp_solver_iter_max: 200
+
+  dimensions:
+    nx: 4
+    nu: 1
+    N: 20
+  cost:
+    # cost_type: NONLINEAR_LS
+    # cost_type_e: NONLINEAR_LS
+    cost_type_0: LINEAR_LS
+    cost_type: LINEAR_LS
+    cost_type_e: LINEAR_LS
+    Q: [100.0, 0.1, 100.0, 0.1] # state cost
+    R: [0.001] # control cost
+    Q_e: [100.0, 0.1, 100.0, 0.1] # terminal state cost
+    # Zl: [1000, 1000]
+    # Zu: [1000, 1000]
+    # zl: [10, 10]
+    # zu: [10, 10]
+    # Zl_e: [1000, 1000]
+    # Zu_e: [1000, 1000]
+    # zl_e: [10, 10]
+    # zu_e: [10, 10]
+  model:
+    name: cartpole_ode
+    params:
+      M: # mass of the cart
+        value: 1.0
+        fixed: false
+      m: # mass of the ball
+        value: 0.1
+        fixed: true
+      l: # length of the pole
+        value: 0.5
+        fixed: true
+      g: # gravity
+        value: 9.8
+        fixed: true
+  constraints:
+    constraint_type: BGH
+    x0: [0.0, 0.0, 3.14, 0.0]
+    lbu: [-30.0] # lower bound of control input
+    ubu: [30.0] # upper bound of control input
+    idxbu: [0]
+    idxsbu: []
+    lbx: [-2.4, -10.0, -6.28, -10.0]
+    ubx: [2.4, 10.0, +6.28, 10.0]
+    idxbx_0: [0, 1, 2, 3]
+    idxbx: [0, 1, 2, 3]
+    # idxsbx: [2, 3]
+    # idxsbx_e: [2, 3]
+    idxsbx: []
+    idxsbx_e: []
+
+environment:
+  id: ContinuousCartPoleSwingUpEnv-v0
+  render_mode: rgb_array
+  force_mag: 30.0
