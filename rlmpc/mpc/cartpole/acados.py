@@ -8,9 +8,9 @@ from typing import Union
 import casadi as cs
 
 
-import scipy
-
 from rlmpc.common.mpc import MPC
+
+from rlmpc.mpc.cartpole.common import find_nlp_entry_expr_dependencies
 
 import matplotlib.pyplot as plt
 
@@ -21,7 +21,6 @@ from rlmpc.mpc.cartpole.common import (
     define_cost,
     define_constraints,
     define_parameter_values,
-    define_discrete_dynamics_function,
     build_nlp,
 )
 
@@ -238,6 +237,402 @@ def ERK4(
     return xf
 
 
+ACADOS_MULTIPLIER_ORDER = [
+    "lbu",
+    "lbx",
+    "lg",
+    "lh",
+    "lphi",
+    "ubu",
+    "ubx",
+    "ug",
+    "uh",
+    "uphi",
+    "lsbu",
+    "lsbx",
+    "lsg",
+    "lsh",
+    "lsphi",
+    "usbu",
+    "usbx",
+    "usg",
+    "ush",
+    "usphi",
+]
+
+
+def rename_key_in_dict(d: dict, old_key: str, new_key: str):
+    d[new_key] = d.pop(old_key)
+    return d
+
+
+def rename_item_in_list(lst: list, old_item: str, new_item: str):
+    if old_item in lst:
+        index_old = lst.index(old_item)
+        lst[index_old] = new_item
+
+    return lst
+
+
+class LagrangeMultiplierMap(object):
+    """
+    Class to store dimensions of constraints
+    """
+
+    order: list = ACADOS_MULTIPLIER_ORDER
+
+    idx_at_stage: list
+
+    def __init__(self, constraints: AcadosOcpConstraints, N: int = 20):
+        super().__init__()
+
+        replacements = {
+            0: [("lbx", "lbx_0"), ("ubx", "ubx_0")],
+            N: [
+                ("lbx", "lbx_e"),
+                ("ubx", "ubx_e"),
+                ("lg", "lg_e"),
+                ("ug", "ug_e"),
+                ("lh", "lh_e"),
+                ("uh", "uh_e"),
+                ("lphi", "lphi_e"),
+                ("uphi", "uphi_e"),
+                ("lsbx", "lsbx_e"),
+                ("usbx", "usbx_e"),
+                ("lsg", "lsg_e"),
+                ("usg", "usg_e"),
+                ("lsh", "lsh_e"),
+                ("ush", "ush_e"),
+                ("lsphi", "lsphi_e"),
+                ("usphi", "usphi_e"),
+            ],
+        }
+
+        idx_at_stage = [dict.fromkeys(self.order, 0) for _ in range(N + 1)]
+
+        # Remove lbu, ubu from idx_at_stage at stage N
+        idx_at_stage[N].pop("lbu")
+        idx_at_stage[N].pop("ubu")
+
+        if False:
+            for stage, keys in replacements.items():
+                for old_key, new_key in keys:
+                    idx_at_stage[stage] = rename_key_in_dict(idx_at_stage[stage], old_key, new_key)
+
+        # Loop over all constraints and count the number of constraints of each type. Store the indices in a dict.
+        for stage, idx in enumerate(idx_at_stage):
+            _start = 0
+            _end = 0
+            for attr in dir(constraints):
+                if idx.keys().__contains__(attr):
+                    _end += len(getattr(constraints, attr))
+                    idx[attr] = slice(_start, _end)
+                    _start = _end
+
+        self.idx_at_stage = idx_at_stage
+
+    def get_idx_at_stage(self, stage: int, field: str) -> slice:
+        """
+        Get the indices of the constraints of the given type at the given stage.
+
+        Parameters:
+            stage: stage index
+            field: constraint type
+
+        Returns:
+            indices: slice object
+        """
+        return self.idx_at_stage[stage][field]
+
+    def __call__(self, stage: int, field: str, lam: np.ndarray) -> np.ndarray:
+        """
+        Extract the multipliers at the given stage from the vector of multipliers.
+
+        Parameters:
+            stage: stage index
+            field: constraint type
+            lam: vector of multipliers
+
+        Returns:
+            lam: vector of multipliers at the given stage and of the given type
+        """
+        return lam[self.get_idx_at_stage(stage, field)]
+
+
+def update_nlp_w(nlp: CasadiNLP, ocp_solver: AcadosOcpSolver) -> CasadiNLP:
+    """
+    Update the primal variables.
+
+    Args:
+        nlp: NLP to update.
+        ocp_solver: OCP solver to get the solution from.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+
+    for stage in range(ocp_solver.acados_ocp.dims.N):
+        nlp.w.val["x", stage] = ocp_solver.get(stage, "x")
+        nlp.w.val["u", stage] = ocp_solver.get(stage, "u")
+
+    stage = ocp_solver.acados_ocp.dims.N
+
+    nlp.w.val["x", stage] = ocp_solver.get(stage, "x")
+
+    return nlp
+
+
+def update_nlp_h(nlp: CasadiNLP):
+    """
+    Update the inequality constraints.
+
+    Args:
+        nlp: NLP to update.
+        ocp_solver: OCP solver to get the solution from.
+
+    Returns:
+        h: Updated inequality constraints.
+    """
+
+    return nlp.h.fun(w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val)["h"]
+
+
+def update_nlp_g(nlp: CasadiNLP):
+    """
+    Update the equality constraints.
+
+    Args:
+        nlp: NLP to update.
+        ocp_solver: OCP solver to get the solution from.
+
+    Returns:
+        g: Updated equality constraints.
+    """
+
+    return nlp.g.fun(w=nlp.w.val, p=nlp.p.val)["g"]
+
+
+def update_nlp_pi(nlp: CasadiNLP, ocp_solver: AcadosOcpSolver) -> CasadiNLP:
+    """
+    Update the multipliers associated with the equality constraints.
+
+    Args:
+        nlp: NLP to update.
+        ocp_solver: OCP solver to get the solution from.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+
+    for stage in range(ocp_solver.acados_ocp.dims.N):
+        nlp.pi.val["pi", stage] = ocp_solver.get(stage, "pi")
+
+    return nlp
+
+
+def update_nlp_lam(nlp: CasadiNLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMultiplierMap) -> CasadiNLP:
+    """
+    Update the multipliers associated with the inequality constraints.
+
+    Args:
+        nlp: NLP to update.
+        ocp_solver: OCP solver to get the solution from.
+        multiplier_map: Map of multipliers.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+
+    for stage in range(ocp_solver.acados_ocp.dims.N):
+        nlp.lam.val["lbx", stage] = multiplier_map(stage, "lbx", ocp_solver.get(stage, "lam"))
+        nlp.lam.val["ubx", stage] = multiplier_map(stage, "ubx", ocp_solver.get(stage, "lam"))
+        nlp.lam.val["lbu", stage] = multiplier_map(stage, "lbu", ocp_solver.get(stage, "lam"))
+        nlp.lam.val["ubu", stage] = multiplier_map(stage, "ubu", ocp_solver.get(stage, "lam"))
+
+    stage = ocp_solver.acados_ocp.dims.N
+
+    nlp.lam.val["lbx", stage] = multiplier_map(stage, "lbx", ocp_solver.get(stage, "lam"))
+    nlp.lam.val["ubx", stage] = multiplier_map(stage, "ubx", ocp_solver.get(stage, "lam"))
+
+    return nlp
+
+
+def update_nlp_R(nlp: CasadiNLP):
+    """
+    Update the KKT matrix R of the NLP.
+
+    Args:
+        nlp: NLP to update.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+
+    return nlp.R.fun(
+        w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val
+    )["R"]
+
+
+def update_nlp_L(nlp: CasadiNLP):
+    """
+    Update the Lagrangian of the NLP.
+
+    Args:
+        nlp: NLP to update.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+
+    return nlp.L.fun(
+        w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val
+    )["L"]
+
+
+def update_nlp_dL_dw(nlp: CasadiNLP):
+    """
+    Update the sensitivity of the Lagrangian with respect to the primal variables.
+
+    Args:
+        nlp: NLP to update.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+    return nlp.dL_dw.fun(w=nlp.w.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val)["dL_dw"]
+
+
+def update_nlp_dL_dp(nlp: CasadiNLP):
+    """
+    Update the sensitivity of the Lagrangian with respect to the parameters.
+
+    Args:
+        nlp: NLP to update.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+    return nlp.dL_dp.fun(w=nlp.w.val, pi=nlp.pi.val, p=nlp.p.val)["dL_dp"]
+
+
+def update_nlp_dR_dz(nlp: CasadiNLP):
+    """
+    Update the sensitivity of the KKT matrix with respect to the primal-dual variables.
+
+    Args:
+        nlp: NLP to update.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+    return nlp.dR_dz.fun(
+        w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val
+    )["dR_dz"]
+
+
+def update_nlp_dR_dp(nlp: CasadiNLP) -> CasadiNLP:
+    """
+    Update the sensitivity of the KKT matrix with respect to the parameters.
+
+    Args:
+        nlp: NLP to update.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+    return nlp.dR_dp.fun(w=nlp.w.val, pi=nlp.pi.val, p=nlp.p.val)["dR_dp"]
+
+
+def test_nlp_is_primal_feasible(nlp: CasadiNLP, tol: float = 1e-6) -> bool:
+    """
+    Check if the primal variables are feasible.
+    """
+    # TODO: Add message to assert. Detail which constraint is violated.
+    assert np.allclose(nlp.g.val, 0.0, atol=tol)
+    assert np.all(nlp.h.val < tol)
+
+    return True
+
+
+def test_nlp_kkt_residual(nlp: CasadiNLP, tol: float = 1e-6) -> bool:
+    # KKT residual check
+    assert np.allclose(nlp.R.val, 0.0, atol=tol)
+
+    return True
+
+
+def test_nlp_stationarity(nlp: CasadiNLP, tol: float = 1e-6) -> bool:
+    # Stationarity check
+    assert np.allclose(nlp.dL_dw.val, 0.0, atol=tol)
+
+    return True
+
+
+def test_nlp_is_dual_feasible(nlp: CasadiNLP) -> bool:
+    # Dual feasibility check
+    assert np.all(nlp.lam.val.cat >= 0.0)
+
+    return True
+
+
+def test_nlp_satisfies_complementarity(nlp: CasadiNLP, tol: float = 1e-6) -> bool:
+    # Complementary slackness check
+    assert np.allclose(nlp.lam.val * nlp.h.val, 0.0, atol=tol)
+
+    return True
+
+
+def test_nlp_sanity(nlp: CasadiNLP, tol: float = 1e-6) -> bool:
+    """
+    Check if the NLP is feasible and satisfies the KKT conditions.
+    """
+    test_nlp_is_primal_feasible(nlp=nlp, tol=tol)
+    test_nlp_kkt_residual(nlp=nlp, tol=tol)
+    test_nlp_stationarity(nlp=nlp, tol=tol)
+    test_nlp_is_dual_feasible(nlp=nlp)
+    test_nlp_satisfies_complementarity(nlp=nlp, tol=tol)
+
+    return True
+
+
+def update_nlp(nlp: CasadiNLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMultiplierMap) -> CasadiNLP:
+    """
+    Update the NLP with the solution of the OCP solver.
+
+    Args:
+        nlp: NLP to update.
+        ocp_solver: OCP solver to get the solution from.
+        multiplier_map: Map of multipliers.
+
+    Returns:
+        nlp: Updated NLP.
+    """
+
+    nlp = update_nlp_w(nlp=nlp, ocp_solver=ocp_solver)
+
+    nlp = update_nlp_pi(nlp=nlp, ocp_solver=ocp_solver)
+
+    nlp = update_nlp_lam(nlp=nlp, ocp_solver=ocp_solver, multiplier_map=multiplier_map)
+
+    nlp.h.val = update_nlp_h(nlp=nlp)
+
+    nlp.g.val = update_nlp_g(nlp=nlp)
+
+    nlp.R.val = update_nlp_R(nlp)
+
+    nlp.L.val = update_nlp_L(nlp)
+
+    nlp.dL_dw.val = update_nlp_dL_dw(nlp)
+
+    nlp.dL_dp.val = update_nlp_dL_dp(nlp)
+
+    nlp.dR_dz.val = update_nlp_dR_dz(nlp)
+
+    nlp.dR_dp.val = update_nlp_dR_dp(nlp)
+
+    return nlp
+
+
 class AcadosMPC(MPC):
     """docstring for CartpoleMPC."""
 
@@ -245,6 +640,7 @@ class AcadosMPC(MPC):
     ocp_solver: AcadosOcpSolver
     nlp: CasadiNLP
     idx: dict
+    muliplier_map: LagrangeMultiplierMap
 
     def __init__(self, config: Config, build: bool = True):
         super().__init__()
@@ -289,19 +685,92 @@ class AcadosMPC(MPC):
 
         nlp, self.idx = build_nlp(ocp=self.ocp)
 
-        # nlp.L.sym = nlp.cost.sym + cs.dot(nlp.pi.sym, nlp.g.sym) + cs.dot(nlp.lam.sym, nlp.h.sym)
+        # TODO: Move the constraints set to the corresponding MPC function. This function should only update the multipliers
+        for stage in range(ocp.dims.N):
+            # nlp.w.val["x", stage] = ocp_solver.get(stage, "x")
+            # nlp.w.val["u", stage] = ocp_solver.get(stage, "u")
 
-        # nlp.dL_dw.sym = cs.jacobian(nlp.L.sym, nlp.w.sym)
+            if stage == 0:
+                nlp.lbw.val["lbx", stage] = ocp.constraints.lbx_0
+                nlp.ubw.val["ubx", stage] = ocp.constraints.ubx_0
+            else:
+                nlp.lbw.val["lbx", stage] = ocp.constraints.lbx
+                nlp.ubw.val["ubx", stage] = ocp.constraints.ubx
 
-        # nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.lam.sym * nlp.h.sym)
+            nlp.lbw.val["lbu", stage] = ocp.constraints.lbu
+            nlp.ubw.val["ubu", stage] = ocp.constraints.ubu
 
-        # nlp.R.fun = cs.Function(
-        #     "R",
-        #     [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym],
-        #     [nlp.R.sym],
-        #     ["w", "lbw", "ubw", "pi", "lam", "p"],
-        #     ["R"],
-        # )
+        self.muliplier_map = LagrangeMultiplierMap(constraints=ocp.constraints, N=ocp.dims.N)
+
+        nlp.L.sym = nlp.cost.sym + cs.dot(nlp.pi.sym, nlp.g.sym) + cs.dot(nlp.lam.sym, nlp.h.sym)
+        nlp.L.fun = cs.Function(
+            "L",
+            [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.dT.sym],
+            [nlp.L.sym],
+            ["w", "lbw", "ubw", "pi", "lam", "p", "dT"],
+            ["L"],
+        )
+
+        nlp.dL_dw.sym = cs.jacobian(nlp.L.sym, nlp.w.sym)
+
+        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dL_dw", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+
+        nlp.dL_dw.fun = cs.Function(
+            "dL_dw",
+            arg_list,
+            [nlp.dL_dw.sym],
+            name_list,
+            ["dL_dw"],
+        )
+
+        # Check if nlp.dL_dw.sym is function of nlp.w.sym
+
+        nlp.dL_dp.sym = cs.jacobian(nlp.L.sym, nlp.p.sym)
+
+        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dL_dp", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+
+        nlp.dL_dp.fun = cs.Function(
+            "dL_dp",
+            arg_list,
+            [nlp.dL_dp.sym],
+            name_list,
+            ["dL_dp"],
+        )
+
+        nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.lam.sym * nlp.h.sym)
+
+        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "R", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+
+        nlp.R.fun = cs.Function(
+            "R",
+            arg_list,
+            [nlp.R.sym],
+            name_list,
+            ["R"],
+        )
+
+        z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam.sym)
+
+        # Generate sensitivity of the KKT matrix with respect to primal-dual variables
+        nlp.dR_dz.sym = cs.jacobian(nlp.R.sym, z)
+        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dR_dz", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+        nlp.dR_dz.fun = cs.Function(
+            "dR_dz",
+            arg_list,
+            [nlp.dR_dz.sym],
+            name_list,
+            ["dR_dz"],
+        )
+
+        nlp.dR_dp.sym = cs.jacobian(nlp.R.sym, nlp.p.sym)
+        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dR_dp", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+        nlp.dR_dp.fun = cs.Function(
+            "dR_dp",
+            arg_list,
+            [nlp.dR_dp.sym],
+            name_list,
+            ["dR_dp"],
+        )
 
         self.nlp = nlp
 
@@ -318,6 +787,10 @@ class AcadosMPC(MPC):
 
         self._parameters = ocp.parameter_values
 
+    def set(self, stage, field, value):
+        self.ocp_solver.set(stage, field, value)
+        self.nlp.set(stage, field, value)
+
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """
         Rescale the action from [low, high] to [-1, 1]
@@ -330,6 +803,65 @@ class AcadosMPC(MPC):
         high = self.ocp.constraints.ubu
 
         return 2.0 * ((action - low) / (high - low)) - 1.0
+
+    # def update(self) -> int:
+    #     status = self.ocp_solver.solve()
+
+    #     self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+
+    #     test_nlp_sanity(self.nlp)
+
+    #     return status
+
+    def update(self, x0: np.ndarray) -> int:
+        """
+        Update the solution of the OCP solver.
+
+        Args:
+            x0: Initial state.
+
+        Returns:
+            status: Status of the solver.
+        """
+        # Set initial state
+        self.ocp_solver.set(0, "lbx", x0)
+        self.ocp_solver.set(0, "ubx", x0)
+
+        self.nlp.lbw.val["lbx", 0] = x0
+        self.nlp.ubw.val["ubx", 0] = x0
+
+        # Set initial action (needed for state-action value)
+        # u0 = np.zeros((self.ocp.dims.nu,))
+        # self.ocp_solver.set(0, "u", u0)
+        # self.ocp_solver.set(0, "lbu", u0)
+        # self.ocp_solver.set(0, "ubu", u0)
+
+        # Solve the optimization problem
+        status = self.ocp_solver.solve()
+
+        self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+
+        # test_nlp_sanity(self.nlp)
+
+        return status
+
+    def get_dL_dp(self) -> np.ndarray:
+        """
+        Get the value of the sensitivity of the Lagrangian with respect to the parameters.
+
+        Returns:
+            dL_dp: Sensitivity of the Lagrangian with respect to the parameters.
+        """
+        return self.nlp.dL_dp.val
+
+    def get_L(self) -> float:
+        """
+        Get the value of the Lagrangian.
+
+        Returns:
+            L: Lagrangian.
+        """
+        return self.nlp.L.val
 
     def get_action(self, x0: np.ndarray) -> np.ndarray:
         """
@@ -344,6 +876,9 @@ class AcadosMPC(MPC):
         # Set initial state
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
+
+        self.nlp.lbw.val["lbx", 0] = x0
+        self.nlp.ubw.val["ubx", 0] = x0
 
         # Solve the optimization problem
         self.ocp_solver.solve()

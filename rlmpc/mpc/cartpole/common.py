@@ -56,6 +56,7 @@ class CasadiNLP:
     R: CasadiNLPEntry
     dR_dw: CasadiNLPEntry
     dR_dp: CasadiNLPEntry
+    dR_dz: CasadiNLPEntry
     dT = CasadiNLPEntry
 
     def __init__(self):
@@ -97,7 +98,12 @@ class CasadiNLP:
         self.R = CasadiNLPEntry()
         self.dR_dw = CasadiNLPEntry()
         self.dR_dp = CasadiNLPEntry()
+        self.dR_dz = CasadiNLPEntry()
         self.dT = CasadiNLPEntry()
+
+    def set(self, stage_, field_, val_):
+        if field_ == "p":
+            self.p.val["p", stage_] = val_
 
 
 def build_nlp(ocp: AcadosOcp) -> tuple[CasadiNLP, dict]:
@@ -405,9 +411,7 @@ def build_nlp(ocp: AcadosOcp) -> tuple[CasadiNLP, dict]:
     return nlp, idx
 
 
-def find_nlp_entry_expr_dependencies(
-    nlp: CasadiNLP, nlp_entry: CasadiNLPEntry, vars: list[str]
-) -> tuple[list[cs.SX], list[str]]:
+def find_nlp_entry_expr_dependencies(nlp: CasadiNLP, nlp_entry: str, vars: list[str]) -> tuple[list[cs.SX], list[str]]:
     """
     Find dependencies of expr on var.
     """
@@ -417,9 +421,9 @@ def find_nlp_entry_expr_dependencies(
     name_list = []
     for attr in vars:
         # Check if nlp.dL_dp.sym is function of nlp.attr.sym
-        dL_dp_depends_on_attr = any(cs.which_depends(nlp_entry.sym, getattr(nlp, attr).sym))
+        dL_dp_depends_on_attr = any(cs.which_depends(getattr(nlp, nlp_entry).sym, getattr(nlp, attr).sym))
         if dL_dp_depends_on_attr:
-            print("dL_dp depends on", attr)
+            print(f"{nlp_entry} depends on", attr)
             arg_list.append(getattr(nlp, attr).sym)
             name_list.append(attr)
 
@@ -549,7 +553,6 @@ def define_y_e_function(ocp: AcadosOcp) -> cs.Function:
     model = ocp.model
 
     x = model.x
-    u = model.u
 
     y_e_fun = cs.Function("y_e_fun", [x], [model.cost_y_expr_e], ["x"], ["y_e"])
 
