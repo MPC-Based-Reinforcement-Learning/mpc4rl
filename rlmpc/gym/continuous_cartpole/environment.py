@@ -738,7 +738,12 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         )
 
         self.action_space = spaces.Box(low=self.min_action, high=self.max_action, shape=(1,))
-        self.observation_space = spaces.Box(-high, high, dtype=np.float32)
+
+        # self.observation_space = spaces.Box(-high, high, dtype=np.float32)
+
+        low = np.array([-1.0, -10.0, -2 * np.pi, -10.0], dtype=np.float32)
+        high = np.array([1.0, 10.0, +2 * np.pi, 10.0], dtype=np.float32)
+        self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
         self.render_mode = render_mode
 
@@ -836,11 +841,10 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         # Note that if you use custom reset bounds, it may lead to out-of-bound
         # state/observations.
         # low, high = maybe_parse_reset_bounds(options, -0.05, 0.05)  # default low  # default high
-        # low = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
-        # high = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
-        low = np.array([-0.5, -0.1, 0.7 * np.pi, -0.1], dtype=np.float32)
-        high = np.array([0.5, 0.1, 1.3 * np.pi, 0.1], dtype=np.float32)
+        low = np.array([0.0, 0.0, 0.9 * np.pi, 0.0], dtype=np.float32)
+        high = np.array([0.0, 0.0, 1.1 * np.pi, 0.0], dtype=np.float32)
         self.state = self.np_random.uniform(low=low, high=high, size=(4,))
+        # self.state = np.array([0.0, 0.0, np.pi, 0.0], dtype=np.float32)
         self.steps_beyond_terminated = None
 
         if self.render_mode == "human":

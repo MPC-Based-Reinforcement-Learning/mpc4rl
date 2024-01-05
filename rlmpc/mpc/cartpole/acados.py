@@ -811,6 +811,19 @@ class AcadosMPC(MPC):
 
         return 2.0 * ((action - low) / (high - low)) - 1.0
 
+    def unscale_action(self, action: np.ndarray) -> np.ndarray:
+        """
+        Rescale the action from [-1, 1] to [low, high]
+        (no need for symmetric action space)
+
+        :param action: Action to scale
+        :return: Scaled action
+        """
+        low = self.ocp.constraints.lbu
+        high = self.ocp.constraints.ubu
+
+        return 0.5 * (high - low) * (action + 1.0) + low
+
     # def update(self) -> int:
     #     status = self.ocp_solver.solve()
 
@@ -880,11 +893,40 @@ class AcadosMPC(MPC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
-        self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+        # self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+        self.update_nlp()
 
         # test_nlp_sanity(self.nlp)
 
         return status
+
+    def update_nlp(self) -> None:
+        """
+        Update the NLP with the solution of the OCP solver.
+        """
+        self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+
+    def set_theta(self, theta: np.ndarray) -> None:
+        """
+        Set the value of the parameters.
+
+        Args:
+            theta: Parameters.
+        """
+        # self._parameters = theta
+        # self.ocp_solver.set(0, "p", theta)
+        # self.nlp.p.val = theta
+
+        for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+            self.set(stage, "p", theta[stage])
+
+        print("hallo")
+
+    def get_theta(self) -> np.ndarray:
+        return self.nlp.p.val.cat
+
+    def get_parameters(self) -> np.ndarray:
+        return self._parameters
 
     def get_dL_dp(self) -> np.ndarray:
         """
@@ -966,7 +1008,7 @@ class AcadosMPC(MPC):
         self.nlp.ubw.val["ubx", 0] = x0
 
         # Solve the optimization problem
-        self.ocp_solver.solve()
+        self.status = self.ocp_solver.solve()
 
         # Get solution
         action = self.ocp_solver.get(0, "u")
@@ -975,9 +1017,6 @@ class AcadosMPC(MPC):
         action = self.scale_action(action)
 
         return action
-
-    def get_parameters(self) -> np.ndarray:
-        return self._parameters
 
     def get_predicted_state_trajectory(self) -> np.ndarray:
         """

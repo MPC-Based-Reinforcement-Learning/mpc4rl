@@ -56,12 +56,10 @@ if __name__ == "__main__":
     obs = vec_env.reset()
 
     # Initialize ReplayBuffer
-    buffer_size = 10000  # Size of the replay buffer
+    buffer_size = 1000  # Size of the replay buffer
     replay_buffer = ReplayBuffer(buffer_size, env.observation_space, env.action_space)
 
-    nstep = 1000
-
-    for _ in range(nstep):
+    for _ in range(buffer_size):
         action, _ = model.predict(obs)
         next_obs, reward, done, info = vec_env.step(action)
         replay_buffer.add(obs=obs, next_obs=next_obs, action=action, reward=reward, done=done, infos=info)
@@ -85,15 +83,15 @@ if __name__ == "__main__":
     done = np.vstack(replay_buffer.dones)
 
     fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
-    axes[0].plot(X[:nstep, 0])
-    axes[0].plot(X[:nstep, 1])
-    axes[0].plot(X[:nstep, 2])
-    axes[0].plot(X[:nstep, 3])
-    axes[1].plot(U[:nstep])
-    axes[2].plot(reward[:nstep])
+    axes[0].plot(X[:, 0])
+    axes[0].plot(X[:, 1])
+    axes[0].plot(X[:, 2])
+    axes[0].plot(X[:, 3])
+    axes[1].plot(U)
+    axes[2].plot(reward)
 
     # Where done == 1, plot a vertical bar in axes[0], and axes[1]
-    idx = np.where(done[:nstep] == 1)[0]
+    idx = np.where(done == 1)[0]
 
     for ax in axes:
         for i in idx:
