@@ -1,8 +1,11 @@
+import tqdm
 from external.stable_baselines3.stable_baselines3.td3 import TD3
 from rlmpc.td3.policies import MPCTD3Policy
 
 import gymnasium as gym
 from rlmpc.common.utils import read_config
+
+from tqdm import tqdm
 
 from rlmpc.gym.continuous_cartpole.environment import (
     ContinuousCartPoleBalanceEnv,
@@ -23,6 +26,23 @@ from stable_baselines3.common.noise import (
 from stable_baselines3.common.buffers import ReplayBuffer
 
 import matplotlib.pyplot as plt
+
+
+def plot_replay_buffer(replay_buffer: ReplayBuffer):
+    fig, axes = plt.subplots(nrows=5, ncols=1, sharex=True)
+
+    X = np.vstack(replay_buffer.observations[: replay_buffer.size() - 1])
+    U = np.vstack(replay_buffer.actions[: replay_buffer.size() - 1])
+
+    axes[0].plot(X[:, 0])
+    axes[1].plot(X[:, 1])
+    axes[2].plot(X[:, 2])
+    axes[3].plot(X[:, 3])
+
+    axes[4].plot(U)
+
+    plt.show()
+
 
 if __name__ == "__main__":
     # parameter_list = []
@@ -76,10 +96,12 @@ if __name__ == "__main__":
 
     n_episodes = 100
 
-    model.policy.actor.mpc.set_theta(np.repeat(0.9, model.policy.actor.mpc.get_theta().shape[0]))
+    # model.policy.actor.mpc.set_theta(np.repeat(0.9, model.policy.actor.mpc.get_theta().shape[0]))
+
+    p = model.policy.actor.mpc.nlp.p.val
 
     parameter_list = []
-    parameter_list.append(model.policy.actor.mpc.get_theta().full())
+    parameter_list.append(model.policy.actor.mpc.get_theta())
 
     total_cost = []
 
@@ -100,52 +122,58 @@ if __name__ == "__main__":
 
         print("Rollout")
 
-        v = []
-        dQ_dp = []
         done = 0
         status = 0
 
+        rollout_step = 0
+        action_noise = True
         while not done and status == 0:
+            # print("Rollout step", rollout_step)
             action, _ = model.predict(obs)
 
             # Perturb action with noise
-            action += np.random.normal(0.0, 0.1, action.shape[0])
-            action = np.clip(action, -1.0, 1.0)
+            if action_noise:
+                action += np.random.normal(0.0, 0.05, action.shape[0])
+                action = np.clip(action, -1.0, 1.0)
 
             next_obs, reward, done, info = vec_env.step(action)
 
-            status = model.policy.actor.mpc.status
+            # status = model.policy.actor.mpc.status
 
             # if status != 0:
             #     break
 
             replay_buffer.add(obs=obs, next_obs=next_obs, action=action, reward=reward, done=done, infos=info)
 
-            model.policy.actor.mpc.update_nlp()
-            v.append(model.policy.actor.mpc.get_V())
-            dQ_dp.append(model.policy.actor.mpc.get_dQ_dp().full().reshape(-1, 1))
-
             obs = next_obs
+
+            rollout_step += 1
 
         # if status != 0:
         #     continue
 
         total_cost.append(np.sum(replay_buffer.rewards))
 
-        print("Done with data collection.")
+        # plot_replay_buffer(replay_buffer)
+
+        # print("Done with data collection.")
         print("Total cost:", total_cost[-1])
 
+        # exit()
+
         print("Learning step")
-        dtheta = np.repeat(0.0, model.policy.actor.mpc.get_theta().shape[0]).reshape(-1, 1)
+        dtheta = np.zeros(model.policy.actor.mpc.get_theta().shape[0]).flatten()
         avg_td_error = 0.0
         mpc = model.policy.actor.mpc
         mpc.reset(replay_buffer.observations[0].reshape(-1))
-        for i in range(replay_buffer.size() - 1):
+
+        for i in tqdm(range(replay_buffer.size() - 2), desc="Training"):
             state = replay_buffer.observations[i].reshape(-1)
             action = mpc.unscale_action(replay_buffer.actions[i].reshape(-1))
             status = mpc.q_update(state, action)
-            dQ_dp = mpc.get_dQ_dp().full().reshape(-1, 1)
+            dQ_dp = mpc.get_dQ_dp()
             if status != 0:
+                print("status", status)
                 continue
 
             q = mpc.get_Q()
@@ -154,6 +182,7 @@ if __name__ == "__main__":
             next_state = replay_buffer.next_observations[i + 1].reshape(-1)
             status = mpc.q_update(next_state, next_action)
             if status != 0:
+                print("status", status)
                 continue
             next_q = mpc.get_Q()
 
@@ -163,19 +192,21 @@ if __name__ == "__main__":
 
             avg_td_error += td_error / replay_buffer.size()
 
-        # Quckfix
-        dtheta[-1] = dtheta[-2]
+        theta = model.policy.actor.mpc.get_theta().copy()
 
-        theta = model.policy.actor.mpc.get_theta().full()
+        theta_old = theta.copy()
+
         theta += dtheta
+
         model.policy.actor.mpc.set_theta(theta)
 
-        parameter_list.append(model.policy.actor.mpc.get_theta().full().copy())
+        parameter_list.append(model.policy.actor.mpc.get_theta().copy())
 
         i_episode += 1
 
+        print("theta_old", theta_old)
         print("theta", theta)
-        print("hallo")
+        print("")
 
     # Plot the parameters
     # colors = plt.cm.RdBu(np.linspace(0, 1, n_episodes))

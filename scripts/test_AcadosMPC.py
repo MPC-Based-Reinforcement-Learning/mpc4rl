@@ -57,7 +57,6 @@ def test_dV_dp(mpc: AcadosMPC, x0: np.ndarray, p_test: list, plot=True):
 
 def test_dQ_dp(mpc: AcadosMPC, x0: np.ndarray, p_test: list, plot=True):
     Q = {"true": np.zeros(len(p_test)), "approx": np.zeros(len(p_test))}
-    dQ_dp = {"true": np.zeros(len(p_test)), "approx": np.zeros(len(p_test))}
 
     u0 = np.array([1.0])
 
@@ -74,15 +73,15 @@ def test_dQ_dp(mpc: AcadosMPC, x0: np.ndarray, p_test: list, plot=True):
         if i == 0:
             Q["approx"][i] = Q["true"][i]
         else:
-            dp = np.repeat(p_test[i] - p_test[i - 1], mpc.ocp_solver.acados_ocp.dims.N + 1).reshape(-1, 1)
+            # dp = np.repeat(p_test[i] - p_test[i - 1], mpc.ocp_solver.acados_ocp.dims.N + 1).reshape(-1, 1)
+            dp = p_test[i] - p_test[i - 1]
             # dQ_dp["true"][i] = mpc.get_dQ_dp()
-            Q["approx"][i] = Q["approx"][i - 1] + np.dot(mpc.get_dQ_dp(), dp)[0][0]
+            Q["approx"][i] = Q["approx"][i - 1] + np.dot(mpc.get_dQ_dp(), dp)
 
     if plot:
         _, ax = plt.subplots(nrows=2, ncols=1, sharex=True)
-        ax[0].plot(p_test, Q["true"])
-        ax[0].plot(p_test, Q["approx"], "--")
-        ax[1].plot(p_test, dQ_dp["true"], "--")
+        ax[0].plot(Q["true"])
+        ax[0].plot(Q["approx"], "--")
 
         plt.show()
 
@@ -92,9 +91,14 @@ if __name__ == "__main__":
 
     mpc = AcadosMPC(config=Config.from_dict(config["mpc"]), build=True)
 
-    x0 = np.array([0.0, 0.0, np.pi / 2, 0.0])
+    x0 = np.array([0.0, 0.0, np.pi / 2, 1.0])
 
-    p_test = np.arange(0.5, 1.5, 0.01).tolist()
+    p_nom = mpc.nlp.p.val
+    p_min = 0.5 * mpc.nlp.p.val
+    p_max = 1.5 * mpc.nlp.p.val
+
+    n_test_params = 200
+    p_test = [p_min + (p_max - p_min) * i / n_test_params for i in range(n_test_params)]
 
     # test_dL_dp(mpc, x0, p_test)
     # test_dV_dp(mpc, x0, p_test)
