@@ -796,7 +796,12 @@ class AcadosMPC(MPC):
 
     def set(self, stage, field, value):
         self.ocp_solver.set(stage, field, value)
-        self.nlp.set(stage, field, value)
+
+        if field == "p":
+            self.nlp.p.val = value
+
+    def get(self, stage, field):
+        return self.ocp_solver.get(stage, field)
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """
@@ -859,7 +864,11 @@ class AcadosMPC(MPC):
         self.nlp.ubw.val["ubu", 0] = u0
 
         # Solve the optimization problem
+
         status = self.ocp_solver.solve()
+
+        self.ocp_solver.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+        self.ocp_solver.set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
 
         self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
 
@@ -918,12 +927,14 @@ class AcadosMPC(MPC):
         # self.nlp.p.val = theta
 
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
-            self.set(stage, "p", theta[stage])
+            self.set(stage, "p", theta)
+
+        self.nlp.p.val = theta
 
         print("hallo")
 
     def get_theta(self) -> np.ndarray:
-        return self.nlp.p.val.cat
+        return self.nlp.p.val
 
     def get_parameters(self) -> np.ndarray:
         return self._parameters
@@ -935,7 +946,7 @@ class AcadosMPC(MPC):
         Returns:
             dL_dp: Sensitivity of the Lagrangian with respect to the parameters.
         """
-        return self.nlp.dL_dp.val
+        return self.nlp.dL_dp.val.full().flatten()
 
     def get_L(self) -> float:
         """
