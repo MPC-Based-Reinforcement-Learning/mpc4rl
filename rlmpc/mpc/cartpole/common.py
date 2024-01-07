@@ -180,9 +180,12 @@ def build_nlp(ocp: AcadosOcp) -> tuple[CasadiNLP, dict]:
     nlp.ubw.sym = struct_symSX([tuple(entries["ubw"])])
 
     # Parameter vector
-    entries["p"].append(entry("p", repeat=ocp.dims.N + 1, struct=struct_symSX([entry(label) for label in labels["p"]])))
 
-    nlp.p.sym = struct_symSX([tuple(entries["p"])])
+    if False:  # No stage-varying parameters for now.
+        entries["p"].append(entry("p", repeat=ocp.dims.N + 1, struct=struct_symSX([entry(label) for label in labels["p"]])))
+        nlp.p.sym = struct_symSX([tuple(entries["p"])])
+    else:
+        nlp.p.sym = struct_symSX(labels["p"])
 
     nlp.dT.sym = struct_symSX([entry("dT", repeat=ocp.dims.N, struct=struct_symSX([entry("dT")]))])
 
@@ -199,9 +202,7 @@ def build_nlp(ocp: AcadosOcp) -> tuple[CasadiNLP, dict]:
 
     for stage_ in range(ocp.dims.N):
         print("g stage: ", stage_)
-        g.append(
-            nlp.f_disc(nlp.w.sym["x", stage_], nlp.w.sym["u", stage_], nlp.p.sym["p", stage_]) - nlp.w.sym["x", stage_ + 1]
-        )
+        g.append(nlp.f_disc(nlp.w.sym["x", stage_], nlp.w.sym["u", stage_], nlp.p.sym.cat) - nlp.w.sym["x", stage_ + 1])
         lbg.append([0 for _ in range(ocp.dims.nx)])
         ubg.append([0 for _ in range(ocp.dims.nx)])
 
@@ -383,7 +384,11 @@ def build_nlp(ocp: AcadosOcp) -> tuple[CasadiNLP, dict]:
 
     # Parameter vector
     nlp.p.val = nlp.p.sym(0)
-    nlp.p.val["p", lambda x: cs.vertcat(*x)] = np.tile(ocp.parameter_values, (1, ocp.dims.N + 1))
+
+    if False:
+        nlp.p.val["p", lambda x: cs.vertcat(*x)] = np.tile(ocp.parameter_values, (1, ocp.dims.N + 1))
+    else:
+        nlp.p.val = ocp.parameter_values
 
     # Initial guess
     x0 = ocp.constraints.lbx_0.tolist()
