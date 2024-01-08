@@ -62,10 +62,10 @@ mpc:
     params:
       M: # mass of the cart
         # value: 1.0
-        value: 0.95
+        value: 1.0
         fixed: false
       m: # mass of the ball
-        value: 0.12
+        value: 0.1
         # value: 0.15
         fixed: false
       l: # length of the pole
@@ -75,7 +75,7 @@ mpc:
       g: # gravity
         value: 9.8
         # value: 9.81
-        fixed: false
+        fixed: true
   constraints:
     constr_type: BGH
     x0: [0.0, 0.0, 3.14, 0.0]

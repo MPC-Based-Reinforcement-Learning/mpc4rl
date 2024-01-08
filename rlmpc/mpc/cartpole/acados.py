@@ -480,6 +480,23 @@ class AcadosMPC(MPC):
         """
         return self.ocp_solver.get_cost()
 
+    def get_pi(self) -> np.ndarray:
+        """
+        Get the value of the policy.
+
+        Assumes OCP is solved for state.
+        """
+        return self.ocp_solver.get(0, "u")
+
+    def get_dpi_dp(self) -> np.ndarray:
+        """
+        Get the value of the sensitivity of the policy with respect to the parameters.
+
+        Assumes OCP is solved for state and parameters.
+        """
+        # return self.nlp.dpi_dp.val.full().flatten()
+        pass
+
     def get_dV_dp(self) -> float:
         """
         Get the value of the sensitivity of the value function with respect to the parameters.
