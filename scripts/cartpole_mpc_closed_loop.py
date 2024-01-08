@@ -6,6 +6,8 @@ import gymnasium as gym
 
 from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
+from rlmpc.common.utils import get_root_path
+
 
 def create_mpc(config: dict) -> AcadosMPC:
     mpc = AcadosMPC(config=config, build=False)
@@ -50,10 +52,12 @@ def plot_results(states: np.ndarray, actions: np.ndarray, costs: np.ndarray):
 
 PLOT = True
 
-if __name__ == "__main__":
-    config = read_config("config/test_AcadosMPC.yaml")
 
-    # mpc = create_mpc(config=Config.from_dict(config["mpc"]))
+if __name__ == "__main__":
+    print("Running test_acados_mpc_closed_loop.py ...")
+
+    config = read_config(f"{get_root_path()}/config/cartpole_mpc.yaml")
+
     mpc = create_mpc(config=config["mpc"])
 
     env = create_environment(config=config)

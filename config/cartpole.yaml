@@ -1,6 +1,5 @@
 mpc:
   id: cartpole
-  # acados_settings:
   meta:
     json_file: config/cartpole_ocp.json
     code_export_dir: c_generated_code/acados_mpc
@@ -23,13 +22,9 @@ mpc:
     nu: 1
     N: 30
   cost:
-    # cost_type: NONLINEAR_LS
-    # cost_type_e: NONLINEAR_LS
     cost_type_0: NONLINEAR_LS
     cost_type: NONLINEAR_LS
     cost_type_e: NONLINEAR_LS
-    # Q: [10.0, 0.1, 10.0, 0.1] # state cost
-    # Q: [10.0, 0.1, 10.0, 0.1] # state cost
     W_0: [
         [10., 0., 0., 0., 0.],
         [0., 0.1, 0., 0., 0.],
@@ -84,21 +79,16 @@ mpc:
   constraints:
     constr_type: BGH
     x0: [0.0, 0.0, 3.14, 0.0]
+    idxbu: [0]
     lbu: [-30.0] # lower bound of control input
     ubu: [30.0] # upper bound of control input
-    idxbu: [0]
-    idxsbu: []
-    lbx: [-2.4, -10.0, -6.28, -10.0]
-    ubx: [2.4, 10.0, +6.28, 10.0]
-    lbx_e: [-2.4, -10.0, -6.28, -10.0]
-    ubx_e: [2.4, 10.0, +6.28, 10.0]
     idxbx_0: [0, 1, 2, 3]
     idxbx: [0, 1, 2, 3]
+    lbx: [-2.4, -10.0, -6.28, -10.0]
+    ubx: [2.4, 10.0, +6.28, 10.0]
     idxbx_e: [0, 1, 2, 3]
-    # idxsbx: [2, 3]
-    # idxsbx_e: [2, 3]
-    idxsbx: []
-    idxsbx_e: []
+    lbx_e: [-2.4, -10.0, -6.28, -10.0]
+    ubx_e: [2.4, 10.0, +6.28, 10.0]
 
 environment:
   id: ContinuousCartPoleSwingUpEnv-v0
