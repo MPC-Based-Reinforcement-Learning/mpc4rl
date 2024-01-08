@@ -1,4 +1,5 @@
 import yaml
+import os
 
 ACADOS_MULTIPLIER_ORDER = [
     "lbu",
@@ -44,3 +45,10 @@ def read_config(config_file):
         except yaml.YAMLError as exc:
             print(exc)
     return config
+
+
+def get_root_path() -> str:
+    """
+    Get the root path of the project.
+    """
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))

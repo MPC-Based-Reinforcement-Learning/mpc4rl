@@ -13,9 +13,10 @@ mpc:
     nlp_solver_type: SQP
     nlp_solver_max_iter: 500
     qp_solver_iter_max: 200
-    ipopt:
-      jit: false
-      print_level: 0
+
+  ipopt:
+    jit: false
+    print_level: 0
 
   dimensions:
     nx: 4
@@ -27,9 +28,32 @@ mpc:
     cost_type_0: NONLINEAR_LS
     cost_type: NONLINEAR_LS
     cost_type_e: NONLINEAR_LS
-    Q: [10.0, 0.1, 10.0, 0.1] # state cost
-    R: [0.01] # control cost
-    Q_e: [10.0, 0.1, 10.0, 0.1] # terminal state cost
+    # Q: [10.0, 0.1, 10.0, 0.1] # state cost
+    # Q: [10.0, 0.1, 10.0, 0.1] # state cost
+    W_0: [
+        [10., 0., 0., 0., 0.],
+        [0., 0.1, 0., 0., 0.],
+        [0., 0., 10., 0., 0.],
+        [0., 0., 0., 0.1, 0.],
+        [0., 0., 0., 0., 0.01], # R
+      ]
+    W: [
+        [10., 0., 0., 0., 0.],
+        [0., 0.1, 0., 0., 0.],
+        [0., 0., 10., 0., 0.],
+        [0., 0., 0., 0.1, 0.],
+        [0., 0., 0., 0., 0.01], # R
+      ]
+    W_e:
+      [
+        [10., 0., 0., 0.],
+        [0., 0.1, 0., 0.],
+        [0., 0., 10., 0.],
+        [0., 0., 0., 0.1],
+      ]
+    yref_0: [0.0, 0.0, 0.0, 0.0, 0.0]
+    yref: [0.0, 0.0, 0.0, 0.0, 0.0]
+    yref_e: [0.0, 0.0, 0.0, 0.0]
     # Zl: [1000, 1000]
     # Zu: [1000, 1000]
     # zl: [10, 10]
@@ -58,7 +82,7 @@ mpc:
         # value: 9.81
         fixed: false
   constraints:
-    constraint_type: BGH
+    constr_type: BGH
     x0: [0.0, 0.0, 3.14, 0.0]
     lbu: [-30.0] # lower bound of control input
     ubu: [30.0] # upper bound of control input
