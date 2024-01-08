@@ -186,6 +186,9 @@ class NLP:
         self.dR_dz = NLPEntry()
         self.dT = NLPEntry()
 
+    def assert_kkt_residual(self) -> np.ndarray:
+        return test_nlp_kkt_residual(self)
+
 
 def define_discrete_dynamics_function(ocp: AcadosOcp) -> cs.Function:
     # Step size.

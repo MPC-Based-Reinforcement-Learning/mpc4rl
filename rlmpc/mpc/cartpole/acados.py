@@ -388,6 +388,12 @@ class AcadosMPC(MPC):
 
         return status
 
+    def assert_nlp_kkt_conditions(self) -> None:
+        """
+        Assert that the NLP is sane.
+        """
+        # Check if the NLP is sane
+
     def update(self, x0: np.ndarray) -> int:
         """
         Update the solution of the OCP solver.
@@ -494,8 +500,33 @@ class AcadosMPC(MPC):
 
         Assumes OCP is solved for state and parameters.
         """
-        # return self.nlp.dpi_dp.val.full().flatten()
-        pass
+
+        dR_dz = self.nlp.dR_dz.val.full()
+        dR_dp = self.nlp.dR_dp.val.full()
+
+        # Find the constraints that are active
+        non_active_constraints = np.where(self.nlp.lam.val.cat.full() < 1e-6)[0]
+
+        # Add len(w) to the indices of the non-active constraints
+        non_active_constraints += self.nlp.w.val.cat.full().shape[0]
+
+        # Add len(pi) to the indices of the non-active constraints
+        non_active_constraints += self.nlp.pi.val.cat.full().shape[0]
+
+        # Remove the non-active constraints from dR_dz
+        dR_dz = np.delete(dR_dz, non_active_constraints, axis=0)
+        dR_dz = np.delete(dR_dz, non_active_constraints, axis=1)
+
+        # Remove the non-active constraints from dR_dp
+        dR_dp = np.delete(dR_dp, non_active_constraints, axis=0)
+
+        dz_dp = np.linalg.solve(dR_dz, -dR_dp)
+
+        dpi_dp = dz_dp[
+            self.ocp_solver.acados_ocp.dims.nx : self.ocp_solver.acados_ocp.dims.nx + self.ocp_solver.acados_ocp.dims.nu, :
+        ]
+
+        return dpi_dp
 
     def get_dV_dp(self) -> float:
         """
@@ -620,6 +651,12 @@ class AcadosMPC(MPC):
         ax[self.ocp.dims.nx].plot(np.ones_like(u) * ubu, "--", color="gray")
 
         plt.show()
+
+    # def check_kkt_conditions_at_solution(self) -> None:
+    #     """
+    #     Check the KKT conditions at the solution of the OCP solver.
+    #     """
+    #     self.nlp.
 
     def print_header(self) -> None:
         """
