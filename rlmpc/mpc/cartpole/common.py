@@ -1,9 +1,106 @@
 import casadi as cs
 from dataclasses import asdict, dataclass, field
 import numpy as np
-from acados_template import AcadosOcpOptions
+from acados_template import AcadosOcpOptions, AcadosOcpCost
 from typing import Optional
 import scipy
+
+
+def define_terminal_cost_function(
+    x_e: cs.SX,
+    sl_e: cs.SX,
+    su_e: cs.SX,
+    yref_e: cs.SX,
+    W_e: np.ndarray,
+    Zl_e: np.ndarray,
+    Zu_e: np.ndarray,
+    zl_e: np.ndarray,
+    zu_e: np.ndarray,
+    cost: AcadosOcpCost,
+    slack: bool = False,
+) -> cs.SX:
+    if cost.cost_type == "LINEAR_LS":
+        y_e = cs.mtimes([cost.Vx_e, x_e])
+
+        cost = 0
+        cost += cs.mtimes([(y_e - yref_e).T, W_e, (y_e - yref_e)])
+
+        if slack:
+            cost += cs.mtimes([sl_e.T, Zl_e, sl_e])
+            cost += cs.mtimes([su_e.T, Zu_e, su_e])
+            cost += cs.mtimes([sl_e.T, zl_e])
+            cost += cs.mtimes([su_e.T, zu_e])
+
+            terminal_cost = cs.Function(
+                "m",
+                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
+                [x_e, sl_e, su_e],
+                [cost],
+                ["x_e", "sl_e", "su_e"],
+                ["out"],
+            )
+        else:
+            terminal_cost = cs.Function(
+                "m",
+                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
+                [x_e],
+                [cost],
+                ["x_e"],
+                ["out"],
+            )
+
+        return terminal_cost
+    else:
+        raise NotImplementedError("Only LINEAR_LS cost types are supported at the moment.")
+
+
+def define_stage_cost_function(
+    x: cs.SX,
+    u: cs.SX,
+    sl: cs.SX,
+    su: cs.SX,
+    yref: cs.SX,
+    W: np.ndarray,
+    Zl: np.ndarray,
+    Zu: np.ndarray,
+    zl: np.ndarray,
+    zu: np.ndarray,
+    cost: AcadosOcpCost,
+    slack: bool = False,
+) -> cs.SX:
+    if cost.cost_type == "LINEAR_LS":
+        y = cs.mtimes([cost.Vx, x]) + cs.mtimes([cost.Vu, u])
+
+        cost = 0
+        cost += cs.mtimes([(y - yref).T, W, (y - yref)])
+        if slack:
+            cost += cs.mtimes([sl.T, Zl, sl])
+            cost += cs.mtimes([su.T, Zu, su])
+            cost += cs.mtimes([sl.T, zl])
+            cost += cs.mtimes([su.T, zu])
+
+        if slack:
+            stage_cost = cs.Function(
+                "l",
+                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
+                [x, u, sl, su],
+                [cost],
+                ["x", "u", "sl", "su"],
+                ["out"],
+            )
+        else:
+            stage_cost = cs.Function(
+                "l",
+                # [x, u, sl, su, yref, W, Zl, Zu, zl, zu],
+                [x, u],
+                [cost],
+                ["x", "u"],
+                ["out"],
+            )
+
+        return stage_cost
+    else:
+        raise NotImplementedError("Only LINEAR_LS cost types are supported at the moment.")
 
 
 @dataclass
@@ -55,6 +152,14 @@ class CostParams:
     Q: np.ndarray
     R: np.ndarray
     Q_e: np.ndarray
+    # Zl: np.ndarray
+    # Zu: np.ndarray
+    # zl: np.ndarray
+    # zu: np.ndarray
+    # Zl_e: np.ndarray
+    # Zu_e: np.ndarray
+    # zl_e: np.ndarray
+    # zu_e: np.ndarray
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -64,6 +169,14 @@ class CostParams:
             Q=np.diag(config_dict["Q"]),
             R=np.diag(config_dict["R"]),
             Q_e=np.diag(config_dict["Q_e"]),
+            # Zl=np.diag(config_dict["Zl"]),
+            # Zu=np.diag(config_dict["Zu"]),
+            # zl=np.array(config_dict["zl"]),
+            # zu=np.array(config_dict["zu"]),
+            # Zl_e=np.diag(config_dict["Zl_e"]),
+            # Zu_e=np.diag(config_dict["Zu_e"]),
+            # zl_e=np.array(config_dict["zl_e"]),
+            # zu_e=np.array(config_dict["zu_e"]),
         )
 
     def to_dict(self):
@@ -82,8 +195,14 @@ class ConstraintParams:
     ubu: np.ndarray
     lbx: np.ndarray
     ubx: np.ndarray
+    lbx_e: np.ndarray
+    ubx_e: np.ndarray
     idxbx: np.ndarray
+    idxbx_e: np.ndarray
     idxbu: np.ndarray
+    idxsbx: np.ndarray = field(default_factory=lambda: np.array([]))
+    idxsbu: np.ndarray = field(default_factory=lambda: np.array([]))
+    idxsbx_e: np.ndarray = field(default_factory=lambda: np.array([]))
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -94,8 +213,14 @@ class ConstraintParams:
             ubu=np.array(config_dict["ubu"]),
             lbx=np.array(config_dict["lbx"]),
             ubx=np.array(config_dict["ubx"]),
+            lbx_e=np.array(config_dict["lbx_e"]),
+            ubx_e=np.array(config_dict["ubx_e"]),
             idxbx=np.array(config_dict["idxbx"]),
+            idxbx_e=np.array(config_dict["idxbx_e"]),
             idxbu=np.array(config_dict["idxbu"]),
+            idxsbx=np.array(config_dict["idxsbx"]),
+            idxsbu=np.array(config_dict["idxsbu"]),
+            idxsbx_e=np.array(config_dict["idxsbx_e"]),
         )
 
     def to_dict(self):
@@ -160,6 +285,7 @@ class Meta:
     """
 
     json_file: str = "acados_ocp.json"
+    code_export_dir: str = "c_generated_code"
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -220,6 +346,20 @@ class Config:
         return config_dict
 
 
+def define_parameter_values(config: dict) -> np.ndarray:
+    # Set up parameters to nominal values
+
+    model_params = ModelParams.from_dict(config["model"]["params"])
+
+    parameter_values = []
+    for _, param in model_params.to_dict().items():
+        if not param["fixed"]:
+            parameter_values += [param["value"]]
+    parameter_values = np.array(parameter_values)
+
+    return parameter_values
+
+
 def define_model_expressions(config: Config) -> (dict, np.ndarray):
     name = config.model_name
 
@@ -261,16 +401,13 @@ def define_model_expressions(config: Config) -> (dict, np.ndarray):
     sin_theta = cs.sin(theta)
     temp = (u + p["m"] * theta_dot**2 * sin_theta) / (p["m"] + p["M"])
 
-    theta_ddot = (p["g"] * sin_theta - cos_theta * temp) / (
-        p["l"] * (4.0 / 3.0 - p["m"] * cos_theta**2 / (p["m"] + p["M"]))
-    )
+    theta_ddot = (p["g"] * sin_theta - cos_theta * temp) / (p["l"] * (4.0 / 3.0 - p["m"] * cos_theta**2 / (p["m"] + p["M"])))
 
     f_expl = cs.vertcat(
         s_dot,
         temp - p["m"] * theta_ddot * cos_theta / (p["m"] + p["M"]),  # x_ddot
         theta_dot,
-        (p["g"] * sin_theta - cos_theta * temp)  # theta_ddot
-        / (p["l"] * (4.0 / 3.0 - p["m"] * cos_theta**2 / (p["m"] + p["M"]))),
+        (p["g"] * sin_theta - cos_theta * temp) / (p["l"] * (4.0 / 3.0 - p["m"] * cos_theta**2 / (p["m"] + p["M"]))),
     )
 
     f_impl = x_dot - f_expl
@@ -309,6 +446,7 @@ def define_cost(config: Config) -> dict:
 
     cost["W"] = scipy.linalg.block_diag(config.cost.Q, config.cost.R)
     cost["W_e"] = config.cost.Q_e
+
     cost["yref"] = np.zeros((dims["ny"],))
     cost["yref_e"] = np.zeros((dims["ny_e"],))
     cost["cost_type"] = config.cost.cost_type
@@ -322,6 +460,15 @@ def define_cost(config: Config) -> dict:
 
     cost["Vx_e"] = np.eye(dims["nx"])
 
+    # cost["Zl"] = config.cost.Zl
+    # cost["Zu"] = config.cost.Zu
+    # cost["zl"] = config.cost.zl
+    # cost["zu"] = config.cost.zu
+    # cost["Zl_e"] = config.cost.Zl_e
+    # cost["Zu_e"] = config.cost.Zu_e
+    # cost["zl_e"] = config.cost.zl_e
+    # cost["zu_e"] = config.cost.zu_e
+
     return cost
 
 
@@ -334,8 +481,14 @@ def define_constraints(config: Config) -> dict:
     constraints["ubu"] = config.constraints.ubu.reshape(-1)
     constraints["lbx"] = config.constraints.lbx.reshape(-1)
     constraints["ubx"] = config.constraints.ubx.reshape(-1)
+    constraints["lbx_e"] = config.constraints.lbx_e.reshape(-1)
+    constraints["ubx_e"] = config.constraints.ubx_e.reshape(-1)
     constraints["idxbx"] = config.constraints.idxbx.reshape(-1)
+    constraints["idxbx_e"] = config.constraints.idxbx_e.reshape(-1)
     constraints["idxbu"] = config.constraints.idxbu.reshape(-1)
+    constraints["idxsbx"] = config.constraints.idxsbx.reshape(-1)
+    constraints["idxsbu"] = config.constraints.idxsbu.reshape(-1)
+    constraints["idxsbx_e"] = config.constraints.idxsbx_e.reshape(-1)
 
     return constraints
 

@@ -20,6 +20,7 @@ Create python virtual environment
     cd <PATH_TO_VENV_DIRECTORY>
     virtualenv rlmpc_venv --python=/usr/bin/python3.11
     source rlmpc_venv/bin/activate
+    python -m pip install -e .
 ```
 
 assuming the binary python3.11 exists. Replace with some other 3.8+ version possible.

@@ -4,6 +4,10 @@
         "editor.formatOnSave": true,
         "editor.formatOnType": false,
     },
+    "black-formatter.args": [
+        "--line-length",
+        "127"
+    ],
     "python.autoComplete.extraPaths": [
         "${workspaceFolder}/external/stable_baselines3",
         "${workspaceFolder}/rlmpc",
@@ -16,59 +20,6 @@
         "${workspaceFolder}/rlmpc/gym",
         "${workspaceFolder}/rlmpc/gym/env"
     ],
-    "latex-workshop.view.pdf.invertMode.sepia": 1,
-    "latex-workshop.view.pdf.invert": 0.0,
-    "latex-workshop.latex.autoBuild.run": "never",
-    // "latex-workshop.latex.autoClean.run": "onSucceeded",
-    "latex-workshop.latex.recipes": [
-        {
-            "name": "lualatex->bibtex->lualatex",
-            "tools": [
-                "lualatex",
-                "bibtex",
-                "lualatex"
-            ],
-            // "name": "pdflatex",
-            // "tools": [
-            //     "pdflatex"
-            // ],
-        }
-    ],
-    "latex-workshop.latex.tools": [
-        {
-            "name": "lualatex",
-            "command": "lualatex",
-            "args": [
-                "-synctex=1",
-                "-interaction=nonstopmode",
-                "-shell-escape",
-                // "-output-directory=output",
-                // "-aux-directory=output",
-                // "-file-line-error",
-                // "-pdf",
-                "%DOC%.tex"
-            ]
-        },
-        {
-            "name": "pdflatex",
-            "command": "pdflatex",
-            "args": [
-                "--shell-escape", // if you want to have the shell-escape flag
-                "-synctex=1",
-                "-interaction=nonstopmode",
-                "-file-line-error",
-                "%DOC%.tex"
-            ]
-        },
-        {
-            "name": "bibtex",
-            "command": "bibtex",
-            "args": [
-                // "-output-directory=output",
-                "%DOCFILE%"
-            ]
-        },
-    ],
     "editor.selectionClipboard": false,
     "editor.formatOnSave": true,
     // "editor.wordWrap": "wordWrapColumn",
@@ -78,13 +29,10 @@
         127
     ],
     "vim.textwidth": 127,
-    // Hide latex auto generated files
-    // "files.exclude": {
-    // "**/*.blg": true,
-    // "**/*.aux": true,
-    // "**/*.log": true,
-    // "**/*.auxlock": true,
-    // "**/*.bbl": true,
-    // "**/*.synctex.gz": true,
-    // }
+    "flake8.args": [
+        "--max-line-length=127",
+        "--ignore=F401",
+        "--ignore=E203",
+        "--ignore=W503"
+    ],
 }

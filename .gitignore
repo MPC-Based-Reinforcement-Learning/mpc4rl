@@ -467,3 +467,19 @@ TSWLatexianTemp*
 # option is specified. Footnotes are the stored in a file with suffix Notes.bib.
 # Uncomment the next line to have this generated file ignored.
 #*Notes.bib
+#
+data/
+external/trash/
+paper_nmpc_2024/
+prototyping/
+requirements.txt
+tests/c_generated_code/
+
+external/acados
+external/stable_baselines3
+
+trash
+
+config/*.json
+c_generated_code/
+
