@@ -174,8 +174,15 @@ if __name__ == "__main__":
                 axes[i_key].plot(idx, results[key]["true"], label="true", color="k")
             axes[i_key].plot(idx, results[key]["approx"][s], linestyle="--", label=f"{key} ::{s}")
 
+    axes[0].set_ylabel("V")
+    axes[1].set_ylabel("Q")
+    axes[2].set_ylabel("pi")
+
     for ax in axes:
         ax.grid(True)
         ax.legend()
+
+    # Save figure
+    plt.savefig("cartpole_mpc_sensitivities.pdf")
 
     plt.show()
