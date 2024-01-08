@@ -482,4 +482,4 @@ trash
 
 config/*.json
 c_generated_code/
-
+*.pdf
