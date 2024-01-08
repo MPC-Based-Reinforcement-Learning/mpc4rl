@@ -32,6 +32,7 @@
     "flake8.args": [
         "--max-line-length=127",
         "--ignore=F401",
-        "--ignore=E203"
+        "--ignore=E203",
+        "--ignore=W503"
     ],
 }

@@ -1,5 +1,3 @@
-import tqdm
-from external.stable_baselines3.stable_baselines3.td3 import TD3
 from rlmpc.td3.policies import MPCTD3Policy
 
 import gymnasium as gym
@@ -7,17 +5,13 @@ from rlmpc.common.utils import read_config
 
 from tqdm import tqdm
 
-from rlmpc.gym.continuous_cartpole.environment import (
-    ContinuousCartPoleBalanceEnv,
-    ContinuousCartPoleSwingUpEnv,
-)
+from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
-from rlmpc.mpc.cartpole.acados import AcadosMPC, Config
+from rlmpc.mpc.cartpole.acados import AcadosMPC
 
-import gymnasium as gym
 import numpy as np
 
-from rlmpc.mpc.cartpole.common import Config, Param, ModelParams
+from rlmpc.mpc.cartpole.common import Config, ModelParams
 
 from stable_baselines3 import TD3
 from stable_baselines3.common.noise import (

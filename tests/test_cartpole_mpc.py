@@ -1,17 +1,16 @@
 from rlmpc.common.utils import read_config
 from rlmpc.mpc.cartpole.acados import AcadosMPC
-from rlmpc.mpc.cartpole.common import Config
 import numpy as np
 import gymnasium as gym
 
 
-from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleBalanceEnv, ContinuousCartPoleSwingUpEnv  # noqa: F401
+from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
 import os
 import matplotlib.pyplot as plt
 
 
-def create_mpc(config: Config) -> AcadosMPC:
+def create_mpc(config: dict) -> AcadosMPC:
     mpc = AcadosMPC(config=config, build=True)
 
     return mpc
@@ -127,7 +126,7 @@ def test_cartpole_mpc_closed_loop():
     path = os.path.dirname(os.path.realpath(__file__))
     config = read_config(os.path.join(path, "../config/test_AcadosMPC.yaml"))
 
-    mpc = create_mpc(config=Config.from_dict(config["mpc"]))
+    mpc = create_mpc(config=config["mpc"])
 
     env = create_environment(config=config)
 
@@ -167,7 +166,7 @@ def test_cartpole_mpc_sensitivities(plot: bool = False):
     path = os.path.dirname(os.path.realpath(__file__))
     config = read_config(os.path.join(path, "../config/test_AcadosMPC.yaml"))
 
-    mpc = create_mpc(config=Config.from_dict(config["mpc"]))
+    mpc = create_mpc(config=config["mpc"])
 
     x0 = np.array([0.0, 0.0, np.pi / 2, 0.0])
 
@@ -201,7 +200,7 @@ def test_mpc_state_action_value_sensitivity(plot: bool = False):
     path = os.path.dirname(os.path.realpath(__file__))
     config = read_config(os.path.join(path, "../config/test_AcadosMPC.yaml"))
 
-    mpc = create_mpc(config=Config.from_dict(config["mpc"]))
+    mpc = create_mpc(config=config["mpc"])
 
     p_min = 0.9 * np.array([1.0, 0.1, 0.5, 9.8])
     p_max = 1.1 * np.array([1.0, 0.1, 0.5, 9.8])

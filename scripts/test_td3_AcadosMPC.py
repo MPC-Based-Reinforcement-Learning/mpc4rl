@@ -1,20 +1,15 @@
-from external.stable_baselines3.stable_baselines3.td3 import TD3
 from rlmpc.td3.policies import MPCTD3Policy
 
 import gymnasium as gym
 from rlmpc.common.utils import read_config
 
-from rlmpc.gym.continuous_cartpole.environment import (
-    ContinuousCartPoleBalanceEnv,
-    ContinuousCartPoleSwingUpEnv,
-)
+from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
-from rlmpc.mpc.cartpole.acados import AcadosMPC, Config
+from rlmpc.mpc.cartpole.acados import AcadosMPC
 
-import gymnasium as gym
 import numpy as np
 
-from rlmpc.mpc.cartpole.common import Config, Param, ModelParams
+from rlmpc.mpc.cartpole.common import Config, ModelParams
 
 from stable_baselines3 import TD3
 from stable_baselines3.common.noise import (
@@ -69,36 +64,37 @@ if __name__ == "__main__":
             obs = vec_env.reset()
             model.policy.actor.mpc.reset(obs[0])
 
-        # vec_env.render("human")
+        vec_env.render("human")
 
-    print("Done with data collection.")
+    if False:
+        print("Done with data collection.")
 
-    obs = np.array(replay_buffer.observations)
+        obs = np.array(replay_buffer.observations)
 
-    # Stack observations vertically in a matrix
-    X = np.vstack(replay_buffer.observations)
-    U = np.vstack(replay_buffer.actions)
+        # Stack observations vertically in a matrix
+        X = np.vstack(replay_buffer.observations)
+        U = np.vstack(replay_buffer.actions)
 
-    reward = np.vstack(replay_buffer.rewards)
-    done = np.vstack(replay_buffer.dones)
+        reward = np.vstack(replay_buffer.rewards)
+        done = np.vstack(replay_buffer.dones)
 
-    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
-    axes[0].plot(X[:, 0])
-    axes[0].plot(X[:, 1])
-    axes[0].plot(X[:, 2])
-    axes[0].plot(X[:, 3])
-    axes[1].plot(U)
-    axes[2].plot(reward)
+        fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
+        axes[0].plot(X[:, 0])
+        axes[0].plot(X[:, 1])
+        axes[0].plot(X[:, 2])
+        axes[0].plot(X[:, 3])
+        axes[1].plot(U)
+        axes[2].plot(reward)
 
-    # Where done == 1, plot a vertical bar in axes[0], and axes[1]
-    idx = np.where(done == 1)[0]
+        # Where done == 1, plot a vertical bar in axes[0], and axes[1]
+        idx = np.where(done == 1)[0]
 
-    for ax in axes:
-        for i in idx:
-            ax.axvline(i, color="k", linestyle="-", linewidth=1)
+        for ax in axes:
+            for i in idx:
+                ax.axvline(i, color="k", linestyle="-", linewidth=1)
 
-    axes[0].grid()
-    axes[1].grid()
-    axes[2].grid()
+        axes[0].grid()
+        axes[1].grid()
+        axes[2].grid()
 
-    plt.show()
+        plt.show()

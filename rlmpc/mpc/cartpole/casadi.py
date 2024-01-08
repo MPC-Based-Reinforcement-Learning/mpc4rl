@@ -6,7 +6,7 @@ from casadi.tools import *
 
 from rlmpc.common.mpc import MPC
 from rlmpc.mpc.cartpole.common import define_parameter_values, define_discrete_dynamics_function
-from rlmpc.mpc.utils import ERK4
+from rlmpc.common.integrator import ERK4
 
 import matplotlib.pyplot as plt
 
@@ -18,7 +18,7 @@ from rlmpc.mpc.cartpole.common import (
     define_constraints,
     define_stage_cost_function,
     define_terminal_cost_function,
-    CasadiNLP,
+    NLP,
     # define_parameters,
 )
 
@@ -26,7 +26,7 @@ from rlmpc.mpc.cartpole.acados import (
     define_acados_constraints,
     define_acados_cost,
     define_acados_dims,
-    define_acados_model,
+    define_model,
 )
 
 from acados_template import (
@@ -49,7 +49,7 @@ class CasadiOcpSolver:
     # _constraints: cs.Function
 
     ocp: AcadosOcp
-    nlp: CasadiNLP
+    nlp: NLP
     p: np.ndarray
     nlp_solution: dict
 
@@ -953,7 +953,7 @@ def build_discrete_dynamics_functions(
 #         return terminal_cost_function
 
 
-def build_nlp(ocp: AcadosOcp) -> (CasadiNLP, dict, dict):
+def build_nlp(ocp: AcadosOcp) -> (NLP, dict, dict):
     """
     Build the NLP for the OCP.
 
@@ -965,7 +965,7 @@ def build_nlp(ocp: AcadosOcp) -> (CasadiNLP, dict, dict):
     TODO: Add support for varying/learning constraints, i.e. set as parameters
     """
 
-    nlp = CasadiNLP()
+    nlp = NLP()
 
     nlp.f_disc = define_discrete_dynamics_function(ocp)
 
@@ -1530,7 +1530,7 @@ def build_nlp(ocp: AcadosOcp) -> (CasadiNLP, dict, dict):
     return nlp, idx
 
 
-def build_lagrange_function(nlp: CasadiNLP, ocp: AcadosOcp) -> cs.Function:
+def build_lagrange_function(nlp: NLP, ocp: AcadosOcp) -> cs.Function:
     pass
 
 
@@ -1564,7 +1564,7 @@ class CasadiMPC(MPC):
 
         self.ocp = AcadosOcp()
 
-        self.ocp.model = define_acados_model(ocp=self.ocp, config=config)
+        self.ocp.model = define_model(ocp=self.ocp, config=config)
 
         self.ocp.parameter_values = define_parameter_values(ocp=self.ocp, config=config)
 

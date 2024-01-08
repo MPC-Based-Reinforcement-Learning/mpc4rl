@@ -1,6 +1,5 @@
 from rlmpc.common.utils import read_config
 from rlmpc.mpc.cartpole.acados import AcadosMPC
-from rlmpc.mpc.cartpole.common import Config
 import numpy as np
 import matplotlib.pyplot as plt
 import gymnasium as gym
@@ -8,7 +7,7 @@ import gymnasium as gym
 from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
 
-def create_mpc(config: Config) -> AcadosMPC:
+def create_mpc(config: dict) -> AcadosMPC:
     mpc = AcadosMPC(config=config, build=False)
 
     return mpc
@@ -54,7 +53,8 @@ PLOT = True
 if __name__ == "__main__":
     config = read_config("config/test_AcadosMPC.yaml")
 
-    mpc = create_mpc(config=Config.from_dict(config["mpc"]))
+    # mpc = create_mpc(config=Config.from_dict(config["mpc"]))
+    mpc = create_mpc(config=config["mpc"])
 
     env = create_environment(config=config)
 
