@@ -480,3 +480,6 @@ external/stable_baselines3
 
 trash
 
+config/*.json
+c_generated_code/
+

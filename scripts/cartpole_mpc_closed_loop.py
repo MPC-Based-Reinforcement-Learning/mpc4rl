@@ -9,8 +9,8 @@ from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpE
 from rlmpc.common.utils import get_root_path
 
 
-def create_mpc(config: dict) -> AcadosMPC:
-    mpc = AcadosMPC(config=config, build=False)
+def create_mpc(config: dict, build=True) -> AcadosMPC:
+    mpc = AcadosMPC(config=config, build=build)
 
     return mpc
 
@@ -56,9 +56,9 @@ PLOT = True
 if __name__ == "__main__":
     print("Running test_acados_mpc_closed_loop.py ...")
 
-    config = read_config(f"{get_root_path()}/config/cartpole_mpc.yaml")
+    config = read_config(f"{get_root_path()}/config/cartpole.yaml")
 
-    mpc = create_mpc(config=config["mpc"])
+    mpc = create_mpc(config=config["mpc"], build=True)
 
     env = create_environment(config=config)
 
