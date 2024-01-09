@@ -420,8 +420,7 @@ class AcadosMPC(MPC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
-        # self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
-        self.update_nlp()
+        self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
 
         # test_nlp_sanity(self.nlp)
 
@@ -433,25 +432,25 @@ class AcadosMPC(MPC):
         """
         self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
 
-    def set_theta(self, theta: np.ndarray) -> None:
+    def set_p(self, p: np.ndarray) -> None:
         """
         Set the value of the parameters.
 
         Args:
-            theta: Parameters.
+            p: Parameters.
         """
         # self._parameters = theta
         # self.ocp_solver.set(0, "p", theta)
         # self.nlp.p.val = theta
 
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
-            self.set(stage, "p", theta)
+            self.set(stage, "p", p)
 
-        self.nlp.p.val = theta
+        self.nlp.p.val = p
 
-        print("hallo")
+        self.update_nlp()
 
-    def get_theta(self) -> np.ndarray:
+    def get_p(self) -> np.ndarray:
         return self.nlp.p.val
 
     def get_parameters(self) -> np.ndarray:
