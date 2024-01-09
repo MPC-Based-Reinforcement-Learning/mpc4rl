@@ -13,6 +13,10 @@ from stable_baselines3.common.buffers import ReplayBuffer
 
 from typing import Any
 
+import pandas as pd
+
+import os
+
 
 def create_mpc(config: dict, build=True) -> AcadosMPC:
     mpc = AcadosMPC(config=config, build=build)
@@ -61,27 +65,126 @@ def plot_results(
     return figure, axes
 
 
+def plot_episode(
+    replay_buffer: ReplayBuffer, td_error: np.ndarray, dQ_dp: np.ndarray, dtheta: np.ndarray
+) -> tuple[plt.figure, Any]:
+    X = np.vstack(replay_buffer.observations[: replay_buffer.size()])
+    U = np.vstack(replay_buffer.actions[: replay_buffer.size()])
+    L = np.vstack(replay_buffer.rewards[: replay_buffer.size()])
+
+    param_labels = PARAM_LABELS
+    observation_labels = STATE_LABELS
+    action_labels = INPUT_LABELS
+    figure, axes = plt.subplots(
+        nrows=len(param_labels) + len(observation_labels) + len(action_labels) + 3, ncols=1, sharex=True
+    )
+    for i, i_ax in enumerate(range(0, X.shape[1])):
+        axes[i_ax].plot(X[:, i])
+        axes[i_ax].set_ylabel(observation_labels[i])
+    for i, i_ax in enumerate(range(X.shape[1], X.shape[1] + U.shape[1])):
+        axes[i_ax].plot(U[:, i])
+        axes[i_ax].set_ylabel(action_labels[i])
+    for i, i_ax in enumerate(range(X.shape[1] + U.shape[1], X.shape[1] + U.shape[1] + dtheta.shape[1])):
+        axes[i_ax].plot(dQ_dp[:, i])
+        axes[i_ax].set_ylabel(f"dQ_d{param_labels[i]}")
+    axes[-3].plot(td_error)
+    axes[-3].set_ylabel("td_error")
+    axes[-2].plot(dtheta)
+    axes[-2].set_ylabel("dtheta")
+    axes[-1].plot(L)
+    axes[-1].set_ylabel("cost")
+    axes[-1].set_xlabel("t")
+
+    for ax in axes:
+        ax.grid()
+
+    return figure, axes
+
+
 def perturb_action(
     action: np.ndarray, noise_scale: float = 0.1, action_space: gym.spaces.Box = gym.spaces.Box(low=-1.0, high=1.0)
 ) -> np.ndarray:
     return np.clip(action + noise_scale * np.random.randn(*action.shape), action_space.low, action_space.high)
 
 
+INPUT_LABELS = {0: "u"}
+STATE_LABELS = {0: "x", 1: "v", 2: "theta", 3: "omega"}
+PARAM_LABELS = {0: "M", 1: "m", 2: "l", 3: "g"}
+
 PLOT = True
+N_EPISODES = 2
+MAX_EPISODE_LENGTH = 500
+GAMMA = 0.99
+LR = 1e-4
 
-n_episodes = 5
 
-max_steps = 500
+def get_n_episode_samples(replay_buffer: ReplayBuffer) -> int:
+    return replay_buffer.size() - 1
 
-gamma = 0.99
 
-lr = 1e-4
+def get_res_dir() -> str:
+    res_dir = f"{get_root_path()}/data/"
+
+    # Append name of this script to res_dir
+    res_dir += f"{os.path.basename(__file__).split('.')[0]}"
+
+    if not os.path.exists(res_dir):
+        os.makedirs(res_dir)
+
+    return res_dir
+
+
+def save_episode(
+    replay_buffer: ReplayBuffer,
+    td_error: np.ndarray,
+    dQ_dp: np.ndarray,
+    dp: np.ndarray,
+    q: np.ndarray,
+    v: np.ndarray,
+    cost: np.ndarray,
+    res_dir: str,
+    i_episode: int,
+):
+    n_episode_samples = get_n_episode_samples(replay_buffer)
+
+    columns = []
+    columns += list(STATE_LABELS.values())
+    columns += list(INPUT_LABELS.values())
+    columns += ["q", "v", "cost", "td_error"]
+    columns += [f"dQ_d{param}" for param in PARAM_LABELS.values()]
+    columns += [f"d{param}" for param in PARAM_LABELS.values()]
+
+    df = pd.DataFrame(index=range(n_episode_samples), columns=columns)
+
+    X = np.vstack(replay_buffer.observations[:n_episode_samples])
+    U = np.vstack(replay_buffer.actions[:n_episode_samples])
+
+    for i_col, state in STATE_LABELS.items():
+        df[state] = X[:, i_col]
+    for i_col, input in INPUT_LABELS.items():
+        df[input] = U[:, i_col]
+    for i_col, param in PARAM_LABELS.items():
+        df[f"dQ_d{param}"] = dQ_dp[:, i_col]
+    for i_col, param in PARAM_LABELS.items():
+        df[f"d{param}"] = np.concatenate((dp[:, i_col], np.array([np.nan])))
+    df["q"] = q
+    df["v"] = v
+    df["cost"] = cost
+    df["td_error"] = np.concatenate((td_error, np.array([np.nan])))
+
+    df.to_csv(f"{res_dir}/episode_{i_episode}.csv")
 
 
 if __name__ == "__main__":
     print("Running test_acados_mpc_closed_loop.py ...")
 
     config = read_config(f"{get_root_path()}/config/cartpole.yaml")
+
+    res_dir = get_res_dir()
+
+    # Ensure all model parameters are not fixed
+    for param in PARAM_LABELS.values():
+        config["mpc"]["model"]["params"][param]["fixed"] = False
 
     mpc = create_mpc(config=config["mpc"], build=True)
 
@@ -95,14 +198,14 @@ if __name__ == "__main__":
     )
 
     i_episode = 0
-    while i_episode < n_episodes:
+    while i_episode < N_EPISODES:
         obs, _ = env.reset()
         mpc.reset(obs)
         replay_buffer.reset()
         done = False
 
         i_step = 0
-        while not done and i_step < max_steps - 1:
+        while not done and i_step < MAX_EPISODE_LENGTH - 1:
             action = mpc.get_action(obs)
 
             action = perturb_action(action)
@@ -117,44 +220,44 @@ if __name__ == "__main__":
 
         print("Total cost", np.sum(replay_buffer.rewards[: replay_buffer.size()]))
 
-        plot_results(replay_buffer)
+        n_episode_samples = replay_buffer.size() - 1
 
-        plt.show()
+        dQ_dp = np.zeros((n_episode_samples, mpc.get_p().shape[0]))
+        q = np.zeros(n_episode_samples)
+        v = np.zeros(n_episode_samples)
 
-        dtheta = np.zeros(mpc.get_theta().shape)
+        dp = np.zeros(mpc.get_p().shape)
 
         mpc.reset(replay_buffer.observations[0].reshape(-1))
-        for i_sample in tqdm(range(replay_buffer.size() - 1), desc="Learning"):
-            obs = replay_buffer.observations[i_sample].reshape(-1)
-            action = replay_buffer.actions[i_sample].reshape(-1)
-            cost = replay_buffer.rewards[i_sample]
-            next_obs = replay_buffer.next_observations[i_sample].reshape(-1)
+        for i_sample in tqdm(range(n_episode_samples), desc="Learning"):
+            status = mpc.q_update(
+                replay_buffer.observations[i_sample].reshape(-1),
+                mpc.unscale_action(replay_buffer.actions[i_sample].reshape(-1)),
+            )
+            dQ_dp[i_sample, :] = mpc.get_dQ_dp()
+            q[i_sample] = mpc.get_Q()
 
-            action = mpc.unscale_action(action)
+            mpc.update(replay_buffer.observations[i_sample].reshape(-1))
+            v[i_sample] = mpc.get_V()
 
-            status = mpc.q_update(obs, action)
-            mpc.update_nlp()
-            dQ_dp = mpc.get_dQ_dp()
-            q = mpc.get_Q()
+        cost = replay_buffer.rewards[:n_episode_samples].reshape(-1)
 
-            next_action = mpc.unscale_action(replay_buffer.actions[i_sample + 1].reshape(-1))
-            status = mpc.q_update(next_obs, next_action)
-            mpc.update_nlp()
-            next_q = mpc.get_Q()
+        td_error = cost[:-1] + GAMMA * v[1:] - q[:-1]
 
-            td_error = cost + gamma * next_q - q
+        dp = np.vstack([LR * td_error[i] * dQ_dp[i, :] for i in range(n_episode_samples - 1)])
 
-            dtheta += lr * td_error * dQ_dp / replay_buffer.size()
+        if PLOT:
+            plot_episode(replay_buffer, td_error, dQ_dp, dp)
+            plt.show()
 
-        theta = mpc.get_theta().copy()
-        theta_new = theta + dtheta
+        p_new = mpc.get_p() - np.mean(dp, axis=0)
 
-        mpc.set_theta(theta_new)
-        mpc.update_nlp()
+        print("p", mpc.get_p())
+        print("p new", p_new)
 
-        print("theta", theta)
-        print("theta_new", theta_new)
+        mpc.set_p(p_new)
 
-        print("")
+        # Write data to a pandas.DataFrame and store it as a csv file
+        save_episode(replay_buffer, td_error, dQ_dp, dp, q, v, cost, res_dir, i_episode)
 
         i_episode += 1
