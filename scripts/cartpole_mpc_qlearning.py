@@ -1,66 +1,26 @@
-from rlmpc.td3.policies import MPCTD3Policy
-
-import gymnasium as gym
 from rlmpc.common.utils import read_config
-
+from rlmpc.mpc.cartpole.acados import AcadosMPC
+import numpy as np
+import matplotlib.pyplot as plt
+import gymnasium as gym
 from tqdm import tqdm
 
 from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
-from rlmpc.mpc.cartpole.acados import AcadosMPC
+from rlmpc.common.utils import get_root_path
 
-import numpy as np
-
-from rlmpc.mpc.cartpole.common import Config, ModelParams
-
-from stable_baselines3 import TD3
-from stable_baselines3.common.noise import (
-    NormalActionNoise,
-)
 from stable_baselines3.common.buffers import ReplayBuffer
 
-import matplotlib.pyplot as plt
+from typing import Any
 
 
-def plot_replay_buffer(replay_buffer: ReplayBuffer):
-    fig, axes = plt.subplots(nrows=5, ncols=1, sharex=True)
+def create_mpc(config: dict, build=True) -> AcadosMPC:
+    mpc = AcadosMPC(config=config, build=build)
 
-    X = np.vstack(replay_buffer.observations[: replay_buffer.size() - 1])
-    U = np.vstack(replay_buffer.actions[: replay_buffer.size() - 1])
-
-    axes[0].plot(X[:, 0])
-    axes[1].plot(X[:, 1])
-    axes[2].plot(X[:, 2])
-    axes[3].plot(X[:, 3])
-
-    axes[4].plot(U)
-
-    plt.show()
+    return mpc
 
 
-if __name__ == "__main__":
-    # parameter_list = []
-
-    # p = np.repeat(0.9, 5)
-
-    # nsteps = 10
-    # for i in range(nsteps):
-    #     parameter_list.append(p.copy())
-    #     p += 0.01 * np.random.uniform(0.0, 1.0, p.shape[0])
-
-    # # Create a color sheme from red to blue with nsteps
-    # colors = plt.cm.RdBu(np.linspace(0, 1, nsteps))
-
-    # fig, axes = plt.subplots()
-    # for i in range(nsteps):
-    #     axes.plot(parameter_list[i], linestyle="None", label=str(i), marker="o", color=colors[i])
-    # plt.show()
-
-    # config = read_config("config/test_td3_AcadosMPC.yaml")
-    config = read_config("config/test_AcadosMPC.yaml")
-
-    model_params = ModelParams.from_dict(config["mpc"]["model"]["params"])
-
+def create_environment(config: dict) -> gym.Env:
     env = gym.make(
         config["environment"]["id"],
         render_mode=config["environment"]["render_mode"],
@@ -69,155 +29,132 @@ if __name__ == "__main__":
         force_mag=config["environment"]["force_mag"],
     )
 
-    # The noise objects for TD3
-    n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+    return env
 
-    model = TD3(
-        MPCTD3Policy,
-        env,
-        action_noise=action_noise,
-        verbose=1,
-        policy_kwargs={"mpc": AcadosMPC(config=Config.from_dict(config["mpc"]))},
-        train_freq=(100, "step"),
+
+def plot_results(
+    replay_buffer: ReplayBuffer,
+    observation_labels: dict = {0: "x", 1: "v", 2: "theta", 3: "omega"},
+    action_labels: dict = {0: "u"},
+) -> tuple[plt.figure, Any]:
+    """
+    Plot replay buffer.
+    """
+    X = np.vstack(replay_buffer.observations[: replay_buffer.size()])
+    U = np.vstack(replay_buffer.actions[: replay_buffer.size()])
+    L = np.vstack(replay_buffer.rewards[: replay_buffer.size()])
+
+    figure, axes = plt.subplots(nrows=len(observation_labels) + len(action_labels) + 1, ncols=1, sharex=True)
+    for i, i_ax in enumerate(range(0, X.shape[1])):
+        axes[i_ax].plot(X[:, i])
+        axes[i_ax].set_ylabel(observation_labels[i])
+    for i, i_ax in enumerate(range(X.shape[1], X.shape[1] + U.shape[1])):
+        axes[i_ax].plot(U[:, i])
+        axes[i_ax].set_ylabel(action_labels[i])
+    axes[-1].plot(L)
+    axes[-1].set_ylabel("cost")
+    axes[-1].set_xlabel("t")
+
+    for ax in axes:
+        ax.grid()
+
+    return figure, axes
+
+
+def perturb_action(
+    action: np.ndarray, noise_scale: float = 0.1, action_space: gym.spaces.Box = gym.spaces.Box(low=-1.0, high=1.0)
+) -> np.ndarray:
+    return np.clip(action + noise_scale * np.random.randn(*action.shape), action_space.low, action_space.high)
+
+
+PLOT = True
+
+n_episodes = 5
+
+max_steps = 500
+
+gamma = 0.99
+
+lr = 1e-4
+
+
+if __name__ == "__main__":
+    print("Running test_acados_mpc_closed_loop.py ...")
+
+    config = read_config(f"{get_root_path()}/config/cartpole.yaml")
+
+    mpc = create_mpc(config=config["mpc"], build=True)
+
+    env = create_environment(config=config)
+
+    replay_buffer = ReplayBuffer(
+        buffer_size=1000,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        handle_timeout_termination=False,
     )
 
-    vec_env = model.get_env()
-
-    # Initialize ReplayBuffer
-    buffer_size = 200  # Size of the replay buffer
-    replay_buffer = ReplayBuffer(buffer_size, env.observation_space, env.action_space)
-
-    n_episodes = 100
-
-    # model.policy.actor.mpc.set_theta(np.repeat(0.9, model.policy.actor.mpc.get_theta().shape[0]))
-
-    p = model.policy.actor.mpc.nlp.p.val
-
-    parameter_list = []
-    parameter_list.append(model.policy.actor.mpc.get_theta())
-
-    total_cost = []
-
-    # Learning rate
-    lr = 1e-4
-    gamma = 0.99
-
     i_episode = 0
-
-    # for i_episode in range(n_episodes):
     while i_episode < n_episodes:
-        print("Episode", i_episode)
-
-        # Reset the environment
-        obs = vec_env.reset()
-        model.policy.actor.mpc.reset(obs[0])
+        obs, _ = env.reset()
+        mpc.reset(obs)
         replay_buffer.reset()
+        done = False
 
-        print("Rollout")
+        i_step = 0
+        while not done and i_step < max_steps - 1:
+            action = mpc.get_action(obs)
 
-        done = 0
-        status = 0
+            action = perturb_action(action)
 
-        rollout_step = 0
-        action_noise = True
-        while not done and status == 0:
-            # print("Rollout step", rollout_step)
-            action, _ = model.predict(obs)
-
-            # Perturb action with noise
-            if action_noise:
-                action += np.random.normal(0.0, 0.05, action.shape[0])
-                action = np.clip(action, -1.0, 1.0)
-
-            next_obs, reward, done, info = vec_env.step(action)
-
-            # status = model.policy.actor.mpc.status
-
-            # if status != 0:
-            #     break
-
-            replay_buffer.add(obs=obs, next_obs=next_obs, action=action, reward=reward, done=done, infos=info)
+            next_obs, reward, done, _, info = env.step(action.flatten().astype(np.float32))
 
             obs = next_obs
 
-            rollout_step += 1
+            replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
 
-        # if status != 0:
-        #     continue
+            i_step += 1
 
-        total_cost.append(np.sum(replay_buffer.rewards))
+        print("Total cost", np.sum(replay_buffer.rewards[: replay_buffer.size()]))
 
-        # plot_replay_buffer(replay_buffer)
+        plot_results(replay_buffer)
 
-        # print("Done with data collection.")
-        print("Total cost:", total_cost[-1])
+        plt.show()
 
-        # exit()
+        dtheta = np.zeros(mpc.get_theta().shape)
 
-        print("Learning step")
-        dtheta = np.zeros(model.policy.actor.mpc.get_theta().shape[0]).flatten()
-        avg_td_error = 0.0
-        mpc = model.policy.actor.mpc
         mpc.reset(replay_buffer.observations[0].reshape(-1))
+        for i_sample in tqdm(range(replay_buffer.size() - 1), desc="Learning"):
+            obs = replay_buffer.observations[i_sample].reshape(-1)
+            action = replay_buffer.actions[i_sample].reshape(-1)
+            cost = replay_buffer.rewards[i_sample]
+            next_obs = replay_buffer.next_observations[i_sample].reshape(-1)
 
-        for i in tqdm(range(replay_buffer.size() - 2), desc="Training"):
-            state = replay_buffer.observations[i].reshape(-1)
-            action = mpc.unscale_action(replay_buffer.actions[i].reshape(-1))
-            status = mpc.q_update(state, action)
+            action = mpc.unscale_action(action)
+
+            status = mpc.q_update(obs, action)
+            mpc.update_nlp()
             dQ_dp = mpc.get_dQ_dp()
-            if status != 0:
-                print("status", status)
-                continue
-
             q = mpc.get_Q()
 
-            next_action = mpc.unscale_action(replay_buffer.actions[i + 1].reshape(-1))
-            next_state = replay_buffer.next_observations[i + 1].reshape(-1)
-            status = mpc.q_update(next_state, next_action)
-            if status != 0:
-                print("status", status)
-                continue
+            next_action = mpc.unscale_action(replay_buffer.actions[i_sample + 1].reshape(-1))
+            status = mpc.q_update(next_obs, next_action)
+            mpc.update_nlp()
             next_q = mpc.get_Q()
 
-            td_error = replay_buffer.rewards[i] + gamma * next_q - q
+            td_error = cost + gamma * next_q - q
 
             dtheta += lr * td_error * dQ_dp / replay_buffer.size()
 
-            avg_td_error += td_error / replay_buffer.size()
+        theta = mpc.get_theta().copy()
+        theta_new = theta + dtheta
 
-        theta = model.policy.actor.mpc.get_theta().copy()
+        mpc.set_theta(theta_new)
+        mpc.update_nlp()
 
-        theta_old = theta.copy()
-
-        theta += dtheta
-
-        model.policy.actor.mpc.set_theta(theta)
-
-        parameter_list.append(model.policy.actor.mpc.get_theta().copy())
-
-        i_episode += 1
-
-        print("theta_old", theta_old)
         print("theta", theta)
+        print("theta_new", theta_new)
+
         print("")
 
-    # Plot the parameters
-    # colors = plt.cm.RdBu(np.linspace(0, 1, n_episodes))
-
-    fig, axes = plt.subplots()
-    for i in range(n_episodes):
-        # axes.plot(parameter_list[i], linestyle="None", label=str(i), marker="o", color=colors[i])
-        axes.plot(parameter_list[i], linestyle="None", label=str(i), marker="o")
-
-    fig, axes = plt.subplots()
-    axes.plot(total_cost, linestyle="None", label=str(i), marker="o")
-
-    plt.show()
-
-    # print("theta", theta)
-    # print("dtheta", dtheta)
-
-    # td_error = rewards[i] + gamma * model.predict(next_observations[i])[0] - model.predict(observations[i])[0]
-
-    # Train the model on the batch
+        i_episode += 1
