@@ -4,6 +4,10 @@
         "editor.formatOnSave": true,
         "editor.formatOnType": false,
     },
+    "black-formatter.args": [
+        "--line-length",
+        "127"
+    ],
     "python.autoComplete.extraPaths": [
         "${workspaceFolder}/external/stable_baselines3",
         "${workspaceFolder}/rlmpc",
@@ -15,5 +19,20 @@
         "${workspaceFolder}/rlmpc",
         "${workspaceFolder}/rlmpc/gym",
         "${workspaceFolder}/rlmpc/gym/env"
-    ]
+    ],
+    "editor.selectionClipboard": false,
+    "editor.formatOnSave": true,
+    // "editor.wordWrap": "wordWrapColumn",
+    // "editor.wrappingIndent": "same",
+    "editor.wordWrapColumn": 127,
+    "editor.rulers": [
+        127
+    ],
+    "vim.textwidth": 127,
+    "flake8.args": [
+        "--max-line-length=127",
+        "--ignore=F401",
+        "--ignore=E203",
+        "--ignore=W503"
+    ],
 }

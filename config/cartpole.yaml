@@ -1,0 +1,96 @@
+mpc:
+  id: cartpole
+  meta:
+    json_file: config/cartpole_ocp.json
+    code_export_dir: c_generated_code/acados_mpc
+  ocp_options:
+    tf: 3.0
+    qp_solver: PARTIAL_CONDENSING_HPIPM
+    hessian_approx: GAUSS_NEWTON
+    integrator_type: DISCRETE
+    sim_method_num_stages: 4
+    nlp_solver_type: SQP
+    nlp_solver_max_iter: 500
+    qp_solver_iter_max: 200
+
+  ipopt:
+    jit: false
+    print_level: 0
+
+  dimensions:
+    nx: 4
+    nu: 1
+    N: 30
+  cost:
+    cost_type_0: NONLINEAR_LS
+    cost_type: NONLINEAR_LS
+    cost_type_e: NONLINEAR_LS
+    W_0: [
+        [10., 0., 0., 0., 0.],
+        [0., 0.1, 0., 0., 0.],
+        [0., 0., 10., 0., 0.],
+        [0., 0., 0., 0.1, 0.],
+        [0., 0., 0., 0., 0.01], # R
+      ]
+    W: [
+        [10., 0., 0., 0., 0.],
+        [0., 0.1, 0., 0., 0.],
+        [0., 0., 10., 0., 0.],
+        [0., 0., 0., 0.1, 0.],
+        [0., 0., 0., 0., 0.01], # R
+      ]
+    W_e:
+      [
+        [10., 0., 0., 0.],
+        [0., 0.1, 0., 0.],
+        [0., 0., 10., 0.],
+        [0., 0., 0., 0.1],
+      ]
+    yref_0: [0.0, 0.0, 0.0, 0.0, 0.0]
+    yref: [0.0, 0.0, 0.0, 0.0, 0.0]
+    yref_e: [0.0, 0.0, 0.0, 0.0]
+    # Zl: [1000, 1000]
+    # Zu: [1000, 1000]
+    # zl: [10, 10]
+    # zu: [10, 10]
+    # Zl_e: [1000, 1000]
+    # Zu_e: [1000, 1000]
+    # zl_e: [10, 10]
+    # zu_e: [10, 10]
+  model:
+    name: cartpole
+    params:
+      M: # mass of the cart
+        # value: 1.0
+        value: 1.0
+        fixed: false
+      m: # mass of the ball
+        value: 0.1
+        # value: 0.15
+        fixed: false
+      l: # length of the pole
+        value: 0.5
+        # value: 0.4
+        fixed: false
+      g: # gravity
+        value: 9.8
+        # value: 9.81
+        fixed: true
+  constraints:
+    constr_type: BGH
+    x0: [0.0, 0.0, 3.14, 0.0]
+    idxbu: [0]
+    lbu: [-30.0] # lower bound of control input
+    ubu: [30.0] # upper bound of control input
+    idxbx_0: [0, 1, 2, 3]
+    idxbx: [0, 1, 2, 3]
+    lbx: [-2.4, -10.0, -6.28, -10.0]
+    ubx: [2.4, 10.0, +6.28, 10.0]
+    idxbx_e: [0, 1, 2, 3]
+    lbx_e: [-2.4, -10.0, -6.28, -10.0]
+    ubx_e: [2.4, 10.0, +6.28, 10.0]
+
+environment:
+  id: ContinuousCartPoleSwingUpEnv-v0
+  render_mode: rgb_array
+  force_mag: 30.0

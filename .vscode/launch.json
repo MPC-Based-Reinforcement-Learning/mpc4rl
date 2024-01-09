@@ -8,8 +8,15 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
-            // "program": "${workspaceFolder}/tests/test_gym_continuous_cartpole_swingup.py",
-            "program": "${workspaceFolder}/tests/test_mpc_gym_cartpole.py",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: scripts/cartpole_mpc_closed_loop.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/cartpole_mpc_closed_loop.py",
             "console": "integratedTerminal",
             "justMyCode": true
         }
