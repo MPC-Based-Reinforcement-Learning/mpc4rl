@@ -195,96 +195,84 @@ class AcadosMPC(MPC):
 
         ocp_generate_external_functions(ocp, ocp.model)
 
-        nlp, self.idx = build_nlp(ocp=self.ocp)
-
-        # TODO: Move the constraints set to the corresponding MPC function. This function should only update the multipliers
-        for stage in range(ocp.dims.N):
-            # nlp.w.val["x", stage] = ocp_solver.get(stage, "x")
-            # nlp.w.val["u", stage] = ocp_solver.get(stage, "u")
-
-            if stage == 0:
-                nlp.lbw.val["lbx", stage] = ocp.constraints.lbx_0
-                nlp.ubw.val["ubx", stage] = ocp.constraints.ubx_0
-            else:
-                nlp.lbw.val["lbx", stage] = ocp.constraints.lbx
-                nlp.ubw.val["ubx", stage] = ocp.constraints.ubx
-
-            nlp.lbw.val["lbu", stage] = ocp.constraints.lbu
-            nlp.ubw.val["ubu", stage] = ocp.constraints.ubu
-
-        self.muliplier_map = LagrangeMultiplierMap(constraints=ocp.constraints, N=ocp.dims.N)
-
-        nlp.L.sym = nlp.cost.sym + cs.dot(nlp.pi.sym, nlp.g.sym) + cs.dot(nlp.lam.sym, nlp.h.sym)
-        nlp.L.fun = cs.Function(
-            "L",
-            [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.dT.sym],
-            [nlp.L.sym],
-            ["w", "lbw", "ubw", "pi", "lam", "p", "dT"],
-            ["L"],
-        )
-
-        nlp.dL_dw.sym = cs.jacobian(nlp.L.sym, nlp.w.sym)
-
-        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dL_dw", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
-
-        nlp.dL_dw.fun = cs.Function(
-            "dL_dw",
-            arg_list,
-            [nlp.dL_dw.sym],
-            name_list,
-            ["dL_dw"],
-        )
-
-        # Check if nlp.dL_dw.sym is function of nlp.w.sym
-
-        nlp.dL_dp.sym = cs.jacobian(nlp.L.sym, nlp.p.sym)
-
-        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dL_dp", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
-
-        nlp.dL_dp.fun = cs.Function(
-            "dL_dp",
-            arg_list,
-            [nlp.dL_dp.sym],
-            name_list,
-            ["dL_dp"],
-        )
-
-        nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.lam.sym * nlp.h.sym)
-
-        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "R", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
-
-        nlp.R.fun = cs.Function(
-            "R",
-            arg_list,
-            [nlp.R.sym],
-            name_list,
-            ["R"],
-        )
-
-        z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam.sym)
-
-        # Generate sensitivity of the KKT matrix with respect to primal-dual variables
-        nlp.dR_dz.sym = cs.jacobian(nlp.R.sym, z)
-        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dR_dz", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
-        nlp.dR_dz.fun = cs.Function(
-            "dR_dz",
-            arg_list,
-            [nlp.dR_dz.sym],
-            name_list,
-            ["dR_dz"],
-        )
-
-        nlp.dR_dp.sym = cs.jacobian(nlp.R.sym, nlp.p.sym)
-        arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dR_dp", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
-        nlp.dR_dp.fun = cs.Function(
-            "dR_dp",
-            arg_list,
-            [nlp.dR_dp.sym],
-            name_list,
-            ["dR_dp"],
-        )
+        nlp = build_nlp(ocp=self.ocp)
 
         self.nlp = nlp
+
+        self.muliplier_map = LagrangeMultiplierMap(ocp)
+
+        if False:
+            nlp.L.sym = nlp.cost.sym + cs.dot(nlp.pi.sym, nlp.g.sym) + cs.dot(nlp.lam.sym, nlp.h.sym)
+            nlp.L.fun = cs.Function(
+                "L",
+                [nlp.w.sym, nlp.lbw.sym, nlp.ubw.sym, nlp.pi.sym, nlp.lam.sym, nlp.p.sym, nlp.dT.sym],
+                [nlp.L.sym],
+                ["w", "lbw", "ubw", "pi", "lam", "p", "dT"],
+                ["L"],
+            )
+
+            nlp.dL_dw.sym = cs.jacobian(nlp.L.sym, nlp.w.sym)
+
+            arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dL_dw", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+
+            nlp.dL_dw.fun = cs.Function(
+                "dL_dw",
+                arg_list,
+                [nlp.dL_dw.sym],
+                name_list,
+                ["dL_dw"],
+            )
+
+            # Check if nlp.dL_dw.sym is function of nlp.w.sym
+
+            nlp.dL_dp.sym = cs.jacobian(nlp.L.sym, nlp.p.sym)
+
+            arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dL_dp", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+
+            nlp.dL_dp.fun = cs.Function(
+                "dL_dp",
+                arg_list,
+                [nlp.dL_dp.sym],
+                name_list,
+                ["dL_dp"],
+            )
+
+            nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.lam.sym * nlp.h.sym)
+
+            arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "R", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+
+            nlp.R.fun = cs.Function(
+                "R",
+                arg_list,
+                [nlp.R.sym],
+                name_list,
+                ["R"],
+            )
+
+            z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam.sym)
+
+            # Generate sensitivity of the KKT matrix with respect to primal-dual variables
+            nlp.dR_dz.sym = cs.jacobian(nlp.R.sym, z)
+            arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dR_dz", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+            nlp.dR_dz.fun = cs.Function(
+                "dR_dz",
+                arg_list,
+                [nlp.dR_dz.sym],
+                name_list,
+                ["dR_dz"],
+            )
+
+            nlp.dR_dp.sym = cs.jacobian(nlp.R.sym, nlp.p.sym)
+            arg_list, name_list = find_nlp_entry_expr_dependencies(nlp, "dR_dp", ["w", "lbw", "ubw", "pi", "lam", "p", "dT"])
+            nlp.dR_dp.fun = cs.Function(
+                "dR_dp",
+                arg_list,
+                [nlp.dR_dp.sym],
+                name_list,
+                ["dR_dp"],
+            )
+
+            self.nlp = nlp
 
         # Check path to config.meta.json file. Create the directory if it does not exist.
         if not os.path.exists(os.path.dirname(config["meta"]["json_file"])):
@@ -296,6 +284,28 @@ class AcadosMPC(MPC):
         else:
             # Assumes json file and c_generated_code folder already exists
             self.ocp_solver = AcadosOcpSolver(ocp, json_file=config["meta"]["json_file"], build=False, generate=False)
+
+        # Set nlp constraints
+
+        # Initial stage
+        self.nlp.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+
+        self.nlp.set(0, "lbx", self.ocp_solver.acados_ocp.constraints.lbx)
+
+        self.nlp.set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
+        self.nlp.set(0, "ubx", self.ocp_solver.acados_ocp.constraints.ubx)
+
+        # Middle stages
+        for stage in range(1, self.ocp_solver.acados_ocp.dims.N):
+            self.nlp.set(stage, "lbx", self.ocp_solver.acados_ocp.constraints.lbx)
+            self.nlp.set(stage, "ubx", self.ocp_solver.acados_ocp.constraints.ubx)
+            self.nlp.set(stage, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+            self.nlp.set(stage, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
+
+        # Final stage
+        stage = self.ocp_solver.acados_ocp.dims.N
+        self.nlp.set(stage, "lbx", self.ocp_solver.acados_ocp.constraints.lbx)
+        self.nlp.set(stage, "ubx", self.ocp_solver.acados_ocp.constraints.ubx)
 
         self._parameters = ocp.parameter_values
 
@@ -310,7 +320,7 @@ class AcadosMPC(MPC):
         self.ocp_solver.set(stage, field, value)
 
         if field == "p":
-            self.nlp.p.val = value
+            self.nlp.vars.val["p"] = value
 
     def get(self, stage, field):
         return self.ocp_solver.get(stage, field)
@@ -364,25 +374,34 @@ class AcadosMPC(MPC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        self.nlp.lbw.val["lbx", 0] = x0
-        self.nlp.ubw.val["ubx", 0] = x0
+        self.nlp.vars.val["lbx_0"] = x0
+        self.nlp.vars.val["ubx_0"] = x0
 
         # Set initial action (needed for state-action value)
         self.ocp_solver.set(0, "u", u0)
-        self.ocp_solver.set(0, "lbu", u0)
-        self.ocp_solver.set(0, "ubu", u0)
+        # self.ocp_solver.set(0, "lbu", u0)
+        # self.ocp_solver.set(0, "ubu", u0)
+        self.ocp_solver.constraints_set(0, "lbu", u0)
+        self.ocp_solver.constraints_set(0, "ubu", u0)
 
-        self.nlp.lbw.val["lbu", 0] = u0
-        self.nlp.ubw.val["ubu", 0] = u0
+        self.nlp.set(0, "lbu", u0)
+        self.nlp.set(0, "ubu", u0)
 
         # Solve the optimization problem
 
         status = self.ocp_solver.solve()
 
-        self.ocp_solver.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
-        self.ocp_solver.set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
+        # self.ocp_solver.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+        self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+        self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
 
         self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+
+        self.nlp.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+        self.nlp.set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
+
+        # self.nlp.set(0, "lbu", u0)
+        # self.nlp.set(0, "ubu", u0)
 
         # test_nlp_sanity(self.nlp)
 
@@ -408,8 +427,11 @@ class AcadosMPC(MPC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        self.nlp.lbw.val["lbx", 0] = x0
-        self.nlp.ubw.val["ubx", 0] = x0
+        self.nlp.set(0, "lbx", x0)
+        self.nlp.set(0, "ubx", x0)
+
+        # self.nlp.lbw.val["lbx", 0] = x0
+        # self.nlp.ubw.val["ubx", 0] = x0
 
         # Set initial action (needed for state-action value)
         # u0 = np.zeros((self.ocp.dims.nu,))
@@ -420,7 +442,7 @@ class AcadosMPC(MPC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
-        self.nlp = update_nlp(self.nlp, self.ocp_solver, self.muliplier_map)
+        self.update_nlp()
 
         # test_nlp_sanity(self.nlp)
 
@@ -504,26 +526,32 @@ class AcadosMPC(MPC):
         dR_dp = self.nlp.dR_dp.val.full()
 
         # Find the constraints that are active
-        non_active_constraints = np.where(self.nlp.lam.val.cat.full() < 1e-6)[0]
+        lam_non_active_constraints = np.where(self.nlp.lam.val.full() < 1e-6)[0]
+        # h_non_active_constraints = np.where(self.nlp.h.val.full() < -1e-10)[0]
+        # non_active_constraints = np.where(self.nlp.h.val.full() < -1e-6)[0]
 
         # Add len(w) to the indices of the non-active constraints
-        non_active_constraints += self.nlp.w.val.cat.full().shape[0]
+        x = self.nlp.x.fun(self.nlp.vars.val)
+        u = self.nlp.u.fun(self.nlp.vars.val)
+        pi = self.nlp.pi.val.cat
 
-        # Add len(pi) to the indices of the non-active constraints
-        non_active_constraints += self.nlp.pi.val.cat.full().shape[0]
+        # non_active_constraints += self.nlp.w.val.cat.full().shape[0]
+
+        # # Add len(pi) to the indices of the non-active constraints
+        # non_active_constraints += self.nlp.pi.val.cat.full().shape[0]
+
+        idx = x.shape[0] + u.shape[0] + pi.shape[0] + lam_non_active_constraints
 
         # Remove the non-active constraints from dR_dz
-        dR_dz = np.delete(dR_dz, non_active_constraints, axis=0)
-        dR_dz = np.delete(dR_dz, non_active_constraints, axis=1)
+        dR_dz = np.delete(dR_dz, idx, axis=0)
+        dR_dz = np.delete(dR_dz, idx, axis=1)
 
         # Remove the non-active constraints from dR_dp
-        dR_dp = np.delete(dR_dp, non_active_constraints, axis=0)
+        dR_dp = np.delete(dR_dp, idx, axis=0)
 
         dz_dp = np.linalg.solve(dR_dz, -dR_dp)
 
-        dpi_dp = dz_dp[
-            self.ocp_solver.acados_ocp.dims.nx : self.ocp_solver.acados_ocp.dims.nx + self.ocp_solver.acados_ocp.dims.nu, :
-        ]
+        dpi_dp = dz_dp[: self.ocp_solver.acados_ocp.dims.nu, :]
 
         return dpi_dp
 
@@ -637,17 +665,17 @@ class AcadosMPC(MPC):
         ax[self.ocp.dims.nx].set_ylabel("u")
 
         # Draw bounds
-        lbx = self.ocp.constraints.lbx
-        ubx = self.ocp.constraints.ubx
-        lbu = self.ocp.constraints.lbu
-        ubu = self.ocp.constraints.ubu
+        # lbx = self.ocp.constraints.lbx
+        # ubx = self.ocp.constraints.ubx
+        # lbu = self.ocp.constraints.lbu
+        # ubu = self.ocp.constraints.ubu
 
-        for i in range(self.ocp.dims.nx):
-            ax[i].plot(np.ones_like(x[:, i]) * lbx[i], "--", color="grey")
-            ax[i].plot(np.ones_like(x[:, i]) * ubx[i], "--", color="gray")
+        # for i in range(self.ocp.dims.nx):
+        #     ax[i].plot(np.ones_like(x[:, i]) * lbx[i], "--", color="grey")
+        #     ax[i].plot(np.ones_like(x[:, i]) * ubx[i], "--", color="gray")
 
-        ax[self.ocp.dims.nx].plot(np.ones_like(u) * lbu, "--", color="gray")
-        ax[self.ocp.dims.nx].plot(np.ones_like(u) * ubu, "--", color="gray")
+        # ax[self.ocp.dims.nx].plot(np.ones_like(u) * lbu, "--", color="gray")
+        # ax[self.ocp.dims.nx].plot(np.ones_like(u) * ubu, "--", color="gray")
 
         plt.show()
 
