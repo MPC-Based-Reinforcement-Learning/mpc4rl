@@ -288,12 +288,12 @@ class AcadosMPC(MPC):
         # Set nlp constraints
 
         # Initial stage
+
+        # lbu_0 = np.ones((self.ocp_solver.acados_ocp.dims.nu,)) * self.ocp_solver.acados_ocp.constraints.lbu[0]
         self.nlp.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
-
-        self.nlp.set(0, "lbx", self.ocp_solver.acados_ocp.constraints.lbx)
-
+        self.nlp.set(0, "lbx", self.ocp_solver.acados_ocp.constraints.lbx_0)
         self.nlp.set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
-        self.nlp.set(0, "ubx", self.ocp_solver.acados_ocp.constraints.ubx)
+        self.nlp.set(0, "ubx", self.ocp_solver.acados_ocp.constraints.ubx_0)
 
         # Middle stages
         for stage in range(1, self.ocp_solver.acados_ocp.dims.N):
@@ -304,8 +304,8 @@ class AcadosMPC(MPC):
 
         # Final stage
         stage = self.ocp_solver.acados_ocp.dims.N
-        self.nlp.set(stage, "lbx", self.ocp_solver.acados_ocp.constraints.lbx)
-        self.nlp.set(stage, "ubx", self.ocp_solver.acados_ocp.constraints.ubx)
+        self.nlp.set(stage, "lbx", self.ocp_solver.acados_ocp.constraints.lbx_e)
+        self.nlp.set(stage, "ubx", self.ocp_solver.acados_ocp.constraints.ubx_e)
 
         self._parameters = ocp.parameter_values
 

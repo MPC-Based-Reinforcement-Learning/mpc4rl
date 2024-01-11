@@ -396,15 +396,16 @@ def get_parameter_labels(ocp: AcadosOcp) -> list[str]:
 
 def append_inequality_constraint_entries(entries: dict, field: str, labels: list[str], idx: np.ndarray, repeat=None) -> dict:
     # if idx:
+    sub_labels = [labels[i] for i in idx]
     if len(idx) > 0:
         if repeat:
-            entries["variables"].append(entry(field, repeat=repeat, struct=struct_symSX(labels)))
+            entries["variables"].append(entry(field, repeat=repeat, struct=struct_symSX(sub_labels)))
             entries["multipliers"]["lam"].append(
-                entry(field, repeat=repeat, struct=struct_symSX([f"lam_{label}" for label in labels]))
+                entry(field, repeat=repeat, struct=struct_symSX([f"lam_{label}" for label in sub_labels]))
             )
         else:
-            entries["variables"].append(entry(field, struct=struct_symSX(labels)))
-            entries["multipliers"]["lam"].append(entry(field, struct=struct_symSX([f"lam_{label}" for label in labels])))
+            entries["variables"].append(entry(field, struct=struct_symSX(sub_labels)))
+            entries["multipliers"]["lam"].append(entry(field, struct=struct_symSX([f"lam_{label}" for label in sub_labels])))
 
     return entries
 
@@ -439,25 +440,37 @@ def define_inequality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> tuple[d
     for stage in range(1, ocp.dims.N):
         if f"lbu_{stage}" in vars.keys():
             # h["lbu_k"] = vars["lbu_k", stage - 1] - vars["u", stage]
-            h, lam = append_inequality_constraint(f"lbu_{stage}", vars[f"lbu_{stage}"] - vars["u", stage], h, lam)
+            h, lam = append_inequality_constraint(
+                f"lbu_{stage}", vars[f"lbu_{stage}"] - vars["u", stage][ocp.constraints.idxbu], h, lam
+            )
         if f"lbx_{stage}" in vars.keys():
             # h["lbx_k"] = vars["lbx_k", stage] - vars["x", stage]
-            h, lam = append_inequality_constraint(f"lbx_{stage}", vars[f"lbx_{stage}"] - vars["x", stage], h, lam)
+            h, lam = append_inequality_constraint(
+                f"lbx_{stage}", vars[f"lbx_{stage}"] - vars["x", stage][ocp.constraints.idxbx], h, lam
+            )
         if f"ubu_{stage}" in vars.keys():
             # h["ubu_k"] = vars["u", stage] - vars["ubu_k", stage - 1]
-            h, lam = append_inequality_constraint(f"ubu_{stage}", vars["u", stage] - vars[f"ubu_{stage}"], h, lam)
+            h, lam = append_inequality_constraint(
+                f"ubu_{stage}", vars["u", stage][ocp.constraints.idxbu] - vars[f"ubu_{stage}"], h, lam
+            )
         if f"ubx_{stage}" in vars.keys():
             # h["ubx_k"] = vars["x", stage] - vars["ubx_k", stage]
-            h, lam = append_inequality_constraint(f"ubx_{stage}", vars["x", stage] - vars[f"ubx_{stage}"], h, lam)
+            h, lam = append_inequality_constraint(
+                f"ubx_{stage}", vars["x", stage][ocp.constraints.idxbx] - vars[f"ubx_{stage}"], h, lam
+            )
 
     # Last stage
     stage = ocp.dims.N
     if f"lbx_{stage}" in vars.keys():
         # h["lbx_e"] = vars["lbx_e"] - vars["x", stage]
-        h, lam = append_inequality_constraint(f"lbx_{stage}", vars[f"lbx_{stage}"] - vars["x", stage], h, lam)
+        h, lam = append_inequality_constraint(
+            f"lbx_{stage}", vars[f"lbx_{stage}"] - vars["x", stage][ocp.constraints.idxbx_e], h, lam
+        )
     if f"ubx_{stage}" in vars.keys():
         # h["ubx_e"] = vars["x", stage] - vars["ubx_e"]
-        h, lam = append_inequality_constraint(f"ubx_{stage}", vars["x", stage] - vars[f"ubx_{stage}"], h, lam)
+        h, lam = append_inequality_constraint(
+            f"ubx_{stage}", vars["x", stage][ocp.constraints.idxbx_e] - vars[f"ubx_{stage}"], h, lam
+        )
 
     # if "lbu_k" in vars.keys():
     #     h["lbu_k"] = cs.vertcat(*[vars["lbu_k", stage - 1] - vars["u", stage] for stage in range(1, ocp.dims.N)])
@@ -628,6 +641,8 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     # Equality constraints
     vars = struct_symSX([tuple(entries["variables"])])
+
+    print(vars["lbx_1"])
 
     # lam = struct_symSX([tuple(entries["multipliers"]["lam"])])
 
