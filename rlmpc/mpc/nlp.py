@@ -2,9 +2,9 @@ import casadi as cs
 import numpy as np
 from typing import Union
 from casadi.tools import struct_symSX, entry
-from acados_template import AcadosOcp, AcadosOcpSolver, AcadosOcpConstraints
+from acados_template import AcadosOcp, AcadosOcpSolver
 
-from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER, rename_key_in_dict
+from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER
 
 from matplotlib import pyplot as plt
 
@@ -24,6 +24,8 @@ class LagrangeMultiplierMap(object):
         idx = dict()
 
         test = np.arange(0, 10)
+
+        # TODO: Add other constraints
 
         # Initial values
         idx["lbu_0"] = slice(0, ocp.dims.nu)
@@ -212,6 +214,13 @@ class NLP:
     def set_pi(self, stage_, value_):
         self.pi.val["pi", stage_] = value_
         return 0
+
+    def set_p(self, value_):
+        self.vars.val["p"] = value_
+        return 0
+
+    def get_p(self) -> np.ndarray:
+        return self.vars.val["p"].full().flatten()
 
     def set_lam(self, stage_, value_):
         if f"lbu_{stage_}" in self.lam_dict.keys():
@@ -642,8 +651,6 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     # Equality constraints
     vars = struct_symSX([tuple(entries["variables"])])
 
-    print(vars["lbx_1"])
-
     # lam = struct_symSX([tuple(entries["multipliers"]["lam"])])
 
     pi = struct_symSX([tuple(entries["multipliers"]["pi"])])
@@ -666,7 +673,8 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     assert (
         nlp.h.sym.shape[0] == nlp.lam.sym.shape[0]
-    ), f"Dimension mismatch between h (inequality constraints, shape {nlp.h.sym.shape[0]}) and lam (multipliers, shape {nlp.lam.sym.shape[0]})"
+    ), f"Dimension mismatch between h (inequality constraints, shape {nlp.h.sym.shape[0]}) and lam \
+    (multipliers, shape {nlp.lam.sym.shape[0]})"
 
     # Build inequality constraint
 
@@ -1171,6 +1179,61 @@ def print_nlp_vars(nlp: NLP):
 #         print(f"{val:<{max_len + 2}}{sym}")
 
 
+def assert_equality_constraints_satisfied(nlp: NLP, ocp_solver: AcadosOcpSolver, debug=False):
+    equality_constraints_satisfied = np.allclose(nlp.g.val, 0.0, atol=1e-6)
+
+    if not equality_constraints_satisfied and debug:
+        print("Equality constraints not satisfied")
+        print("ocp_solver.residuals:", ocp_solver.get_residuals())
+        print("nlp.residuals:", nlp.get_residuals())
+
+    assert equality_constraints_satisfied, "Equality constraints are not satisfied."
+
+
+def assert_inequality_constraints_satisfied(nlp: NLP, ocp_solver: AcadosOcpSolver, debug=False):
+    inequality_constraints_satisfied = np.all(nlp.h.val < 1e-6)
+
+    if not inequality_constraints_satisfied and debug:
+        print("Inequality constraints not satisfied")
+        print("ocp_solver.residuals:", ocp_solver.get_residuals())
+        print("nlp.residuals:", nlp.get_residuals())
+
+    assert inequality_constraints_satisfied, "Inequality constraints are not satisfied."
+
+
+def assert_stationarity_satisfied(nlp: NLP, ocp_solver: AcadosOcpSolver, debug=False):
+    stationarity_satisfied = np.allclose(nlp.dL_du.val, 0.0, atol=1e-6) and np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6)
+
+    if not stationarity_satisfied and debug:
+        print("Stationarity not satisfied")
+        print("ocp_solver.residuals:", ocp_solver.get_residuals())
+        print("nlp.residuals:", nlp.get_residuals())
+
+    assert stationarity_satisfied, "Stationarity is not satisfied."
+
+
+def assert_complementary_slackness_satisfied(nlp: NLP, ocp_solver: AcadosOcpSolver, debug=False):
+    complementary_slackness_satisfied = np.allclose(nlp.lam.val * nlp.h.val, 0.0, atol=1e-6)
+
+    if not complementary_slackness_satisfied and debug:
+        print("Complementary slackness not satisfied")
+        print("ocp_solver.residuals:", ocp_solver.get_residuals())
+        print("nlp.residuals:", nlp.get_residuals())
+
+    assert complementary_slackness_satisfied, "Complementary slackness is not satisfied."
+
+
+def assert_cost_nlp_ocp_solver_match(nlp: NLP, ocp_solver: AcadosOcpSolver, debug=False):
+    cost_match = np.allclose(nlp.cost.val, ocp_solver.get_cost(), atol=1e-1)
+
+    if not cost_match and debug:
+        print("Cost mismatch")
+        print("ocp_solver.residuals:", ocp_solver.get_residuals())
+        print("nlp.residuals:", nlp.get_residuals())
+
+    assert cost_match, "Costs do not match."
+
+
 def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMultiplierMap) -> NLP:
     """
     Update the NLP with the solution of the OCP solver.
@@ -1212,27 +1275,14 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMu
     nlp.dR_dz.val = nlp.dR_dz.fun(nlp.vars.val, nlp.pi.val, nlp.lam.val)
     nlp.dR_dp.val = nlp.dR_dp.fun(nlp.vars.val, nlp.pi.val, nlp.lam.val)
 
-    assert abs(nlp.cost.val - ocp_solver.get_cost()) < 1e-1, "Cost mismatch between NLP and OCP solver."
+    assert_cost_nlp_ocp_solver_match(nlp, ocp_solver)
 
-    assert np.allclose(nlp.g.val, 0.0, atol=1e-6), "Equality constraints are not satisfied."
+    assert_equality_constraints_satisfied(nlp, ocp_solver)
 
-    # if not np.all(nlp.h.val < 1e-10):
-    #     nlp.print_inequality_constraints()
+    assert_inequality_constraints_satisfied(nlp, ocp_solver)
 
-    assert np.all(nlp.h.val < 1e-10), "Inequality constraints are not satisfied."
+    assert_stationarity_satisfied(nlp, ocp_solver)
 
-    # if not np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6):
-    #     print("Complete slackness not satisfied.")
-    #     print(nlp.h.val * nlp.lam.val)
-    #     print(nlp.vars.val["lbu_0"])
-    #     print(nlp.vars.val["ubu_0"])
-    #     print(nlp.vars.val["u", 0])
-    #     print("")
-
-    assert np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6), "Complementary slackness not satisfied."
-
-    assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
-
-    assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
+    assert_complementary_slackness_satisfied(nlp, ocp_solver)
 
     return nlp

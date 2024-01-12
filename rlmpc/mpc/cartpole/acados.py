@@ -468,12 +468,13 @@ class AcadosMPC(MPC):
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
             self.set(stage, "p", p)
 
-        self.nlp.p.val = p
+        self.nlp.set_p(p)
 
-        self.update_nlp()
+        # self.update_nlp()
 
     def get_p(self) -> np.ndarray:
-        return self.nlp.p.val
+        # return self.nlp.p.val
+        return self.nlp.get_p()
 
     def get_parameters(self) -> np.ndarray:
         return self._parameters
@@ -602,8 +603,10 @@ class AcadosMPC(MPC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        self.nlp.lbw.val["lbx", 0] = x0
-        self.nlp.ubw.val["ubx", 0] = x0
+        # self.nlp.lbw.val["lbx", 0] = x0
+        # self.nlp.ubw.val["ubx", 0] = x0
+        self.nlp.set(0, "lbx", x0)
+        self.nlp.set(0, "ubx", x0)
 
         # Solve the optimization problem
         self.status = self.ocp_solver.solve()

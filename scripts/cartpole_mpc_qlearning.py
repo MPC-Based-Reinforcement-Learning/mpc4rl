@@ -98,6 +98,8 @@ def plot_episode(
     for ax in axes:
         ax.grid()
 
+    figure.savefig(f"{get_res_dir()}/episode_{i_episode}.png")
+
     return figure, axes
 
 
@@ -112,7 +114,7 @@ STATE_LABELS = {0: "x", 1: "v", 2: "theta", 3: "omega"}
 PARAM_LABELS = {0: "M", 1: "m", 2: "l", 3: "g"}
 
 PLOT = True
-N_EPISODES = 2
+N_EPISODES = 5
 MAX_EPISODE_LENGTH = 500
 GAMMA = 0.99
 LR = 1e-4

@@ -4,7 +4,7 @@ mpc:
     json_file: config/cartpole_ocp.json
     code_export_dir: c_generated_code/acados_mpc
   ocp_options:
-    tf: 3.0
+    tf: 2.0
     qp_solver: PARTIAL_CONDENSING_HPIPM
     hessian_approx: GAUSS_NEWTON
     integrator_type: DISCRETE
@@ -20,7 +20,7 @@ mpc:
   dimensions:
     nx: 4
     nu: 1
-    N: 30
+    N: 40
   cost:
     cost_type_0: NONLINEAR_LS
     cost_type: NONLINEAR_LS
@@ -81,14 +81,17 @@ mpc:
     x0: [0.0, 0.0, 3.14, 0.0]
     idxbu: [0]
     lbu: [-30.0] # lower bound of control input
-    ubu: [30.0] # upper bound of control input
-    idxbx_0: [0, 1, 2, 3]
-    idxbx: [0, 1, 2, 3]
-    lbx: [-2.4, -10.0, -6.28, -10.0]
-    ubx: [2.4, 10.0, +6.28, 10.0]
-    idxbx_e: [0, 1, 2, 3]
-    lbx_e: [-2.4, -10.0, -6.28, -10.0]
-    ubx_e: [2.4, 10.0, +6.28, 10.0]
+    ubu: [+30.0] # upper bound of control input
+    # idxbx_0: [0, 1, 2, 3]
+    # idxbx: [0, 1, 2, 3]
+    # lbx: [-2.4, -10.0, -6.28, -10.0]
+    # ubx: [2.4, 10.0, +6.28, 10.0]
+    # idxbx: [0]
+    # lbx: [-2.4]
+    # ubx: [2.4]
+    # idxbx_e: [0]
+    # lbx_e: [-2.4]
+    # ubx_e: [2.4]
 
 environment:
   id: ContinuousCartPoleSwingUpEnv-v0
