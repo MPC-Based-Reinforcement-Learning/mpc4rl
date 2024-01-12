@@ -9,3 +9,8 @@ register(
     id="ContinuousCartPoleSwingUpEnv-v0",
     entry_point="rlmpc.gym.continuous_cartpole.environment:ContinuousCartPoleSwingUpEnv",
 )
+
+register(
+    id="House-v0",
+    entry_point="rlmpc.gym.house.environment:HouseEnv",
+)
