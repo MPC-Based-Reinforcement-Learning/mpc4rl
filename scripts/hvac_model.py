@@ -3,16 +3,15 @@ import numpy as np
 import scipy.integrate as integrate
 import matplotlib.pyplot as plt
 
-from acados_template import AcadosOcp, AcadosOcpSolver
-import casadi as cs
-import scipy
 import gymnasium as gym
 
-from rlmpc.gym.house.environment import build_A, build_B, update_A, update_B, ode
+from rlmpc.gym.house.environment import build_A, build_B, ode
 
 from rlmpc.gym.house.environment import HouseEnv  # noqa: F401
 
 from stable_baselines3.common.buffers import ReplayBuffer
+
+from rlmpc.mpc.hvac.acados import AcadosMPC, define_ocp_solver
 
 
 def erk4_integrator_step(f, x, u, p, h) -> np.ndarray:
@@ -191,85 +190,6 @@ def sample_heatpump_efficiency(nu: int) -> np.ndarray:
     return eta
 
 
-def define_ocp_solver(param: list):
-    ocp = AcadosOcp()
-
-    nx = param[1].shape[0]
-    nu = param[2].shape[0]
-    x = cs.SX.sym("T", nx)
-    u = cs.SX.sym("u", nu)
-    xdot = cs.SX.sym("xdot", nx)
-
-    resistance = cs.SX.sym("R", nx, nx)
-    capacity = cs.SX.sym("C", nx - 1)
-    efficiency = cs.SX.sym("eta", nu)
-
-    p_sym = cs.vertcat(
-        cs.reshape(capacity, (nx - 1, 1)), cs.reshape(resistance, (nx * nx, 1)), cs.reshape(efficiency, (nu, 1))
-    )
-
-    A = cs.SX.zeros(nx, nx)
-    A = update_A(A, [capacity, resistance, efficiency])
-    B = cs.SX.zeros(nx, nu)
-    B = update_B(B, [capacity, resistance, efficiency])
-
-    z = None
-
-    f_expl = cs.mtimes(A, x) + cs.mtimes(B, u)
-
-    f_impl = xdot - f_expl
-    # f_disc =
-
-    ocp.model.f_impl_expr = f_impl
-    ocp.model.f_expl_expr = f_expl
-    ocp.model.x = x
-    ocp.model.xdot = xdot
-    ocp.model.cost_y_expr = cs.vertcat(x[:-1], u)
-    ocp.model.cost_y_expr_e = x[:-1]
-    ocp.model.p = p_sym
-    ocp.model.u = u
-    ocp.model.z = z
-    ocp.model.name = "house"
-
-    ocp.dims.N = 100
-    ocp.dims.nx = nx
-    ocp.dims.nu = nu
-    ocp.dims.np = len(param[0]) + len(param[1]) * len(param[1]) + len(param[2])
-    ocp.dims.ny_0 = nx - 1 + nu
-    ocp.dims.ny = nx - 1 + nu
-    ocp.dims.ny_e = nx - 1
-
-    ocp.constraints.idxbx = np.array([0, 1, 2, 3])
-    ocp.constraints.lbx = np.array([15, 15, 15, 15])
-    ocp.constraints.ubx = np.array([25, 25, 25, 25])
-
-    ocp.constraints.idxbx_0 = np.array([0, 1, 2, 3, 4])
-    ocp.constraints.lbx_0 = np.array([20, 25, 15, 22, 10])
-    ocp.constraints.ubx_0 = np.array([20, 25, 15, 22, 10])
-
-    ocp.cost.cost_type = "NONLINEAR_LS"
-    ocp.cost.cost_type_e = "NONLINEAR_LS"
-
-    Q = np.diag([1e-2, 1e-2, 1e-2, 1e-2])
-    R = np.diag([1e0, 1e0])
-    Qe = Q
-
-    ocp.cost.W = scipy.linalg.block_diag(Q, R)
-    ocp.cost.W_0 = ocp.cost.W
-    ocp.cost.W_e = Qe
-    ocp.cost.yref = np.array([20, 20, 20, 20, 0, 0])
-    ocp.cost.yref_e = np.array([20, 20, 20, 20])
-
-    ocp.solver_options.tf = 1e3
-    ocp.solver_options.nlp_solver_type = "SQP"
-    ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-    ocp.solver_options.integrator_type = "ERK"
-
-    ocp.parameter_values = np.concatenate((param[0].reshape(-1), param[1].reshape(-1), param[2].reshape(-1)))
-
-    return AcadosOcpSolver(ocp, json_file="hvac_ocp.json")
-
-
 def test_ocp_prediction():
     house = House()
     ocp_solver = define_ocp_solver(house)
@@ -308,6 +228,10 @@ if __name__ == "__main__":
 
     p = [sample_capacity(4), sample_resistance(5), sample_heatpump_efficiency(2)]
 
+    config = {"params": p}
+
+    mpc = AcadosMPC(config)
+
     env = gym.make(
         "House-v0",
         p=p,
@@ -315,9 +239,9 @@ if __name__ == "__main__":
         max_power=100.0,
     )
 
-    ocp_solver = define_ocp_solver(param=p)
+    # ocp_solver = define_ocp_solver(param=p)
 
-    buffer_size = 1000
+    buffer_size = 5000
 
     replay_buffer = ReplayBuffer(
         buffer_size=buffer_size,
@@ -330,10 +254,9 @@ if __name__ == "__main__":
 
     obs, _ = env.reset()
 
-    action = np.array([0, 0], dtype=np.float32)
-
     for _ in range(buffer_size):
-        next_obs, reward, done, _, info = env.step(action)
+        action = mpc.get_action(obs)
+        next_obs, reward, done, _, info = env.step(np.array(action, dtype=np.float32))
 
         replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
 
