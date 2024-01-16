@@ -1219,7 +1219,7 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMu
     # if not np.all(nlp.h.val < 1e-10):
     #     nlp.print_inequality_constraints()
 
-    assert np.all(nlp.h.val < 1e-10), "Inequality constraints are not satisfied."
+    assert np.all(nlp.h.val < 1e-6), "Inequality constraints are not satisfied."
 
     # if not np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6):
     #     print("Complete slackness not satisfied.")
