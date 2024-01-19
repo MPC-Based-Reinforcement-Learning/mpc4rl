@@ -4,7 +4,7 @@ import casadi as cs
 from casadi.tools import struct_symMX, struct_MX, struct_symSX, struct_SX, entry
 from casadi.tools import *
 
-from rlmpc.common.mpc import MPC
+from mpc.common.mpc import MPC
 from rlmpc.mpc.cartpole.common import define_parameter_values, define_discrete_dynamics_function
 from rlmpc.common.integrator import ERK4
 

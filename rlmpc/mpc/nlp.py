@@ -2,9 +2,9 @@ import casadi as cs
 import numpy as np
 from typing import Union
 from casadi.tools import struct_symSX, entry
-from acados_template import AcadosOcp, AcadosOcpSolver, AcadosOcpConstraints
+from acados_template import AcadosOcp, AcadosOcpSolver
 
-from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER, rename_key_in_dict
+from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER
 
 from matplotlib import pyplot as plt
 
@@ -265,14 +265,15 @@ def define_discrete_dynamics_function(ocp: AcadosOcp) -> cs.Function:
     x = ocp.model.x
     u = ocp.model.u
     p = ocp.model.p
-    f_expl = ocp.model.f_expl_expr
 
-    # Continuous dynamics function.
-    f = cs.Function("f", [x, u, p], [f_expl])
-
-    # TODO: Add support for other integrator types
-    # Integrate given amount of steps over the interval with Runge-Kutta 4 scheme
     if ocp.solver_options.integrator_type == "ERK":
+        f_expl = ocp.model.f_expl_expr
+
+        # Continuous dynamics function.
+        f = cs.Function("f", [x, u, p], [f_expl])
+
+        # TODO: Add support for other integrator types
+        # Integrate given amount of steps over the interval with Runge-Kutta 4 scheme
         h = ocp.solver_options.tf / ocp.dims.N / ocp.solver_options.sim_method_num_stages
 
         for _ in range(ocp.solver_options.sim_method_num_steps):
@@ -297,7 +298,8 @@ def define_y_0_function(ocp: AcadosOcp) -> cs.Function:
     x = model.x
     u = model.u
 
-    y_0_fun = cs.Function("y_0_fun", [x, u], [model.cost_y_expr_0], ["x", "u"], ["y_0"])
+    if ocp.cost.cost_type_0 == "NONLINEAR_LS":
+        y_0_fun = cs.Function("y_0_fun", [x, u], [model.cost_y_expr_0], ["x", "u"], ["y_0"])
 
     return y_0_fun
 
@@ -308,7 +310,8 @@ def define_y_function(ocp: AcadosOcp) -> cs.Function:
     x = model.x
     u = model.u
 
-    y_fun = cs.Function("y_fun", [x, u], [model.cost_y_expr], ["x", "u"], ["y"])
+    if ocp.cost.cost_type == "NONLINEAR_LS":
+        y_fun = cs.Function("y_fun", [x, u], [model.cost_y_expr], ["x", "u"], ["y"])
 
     return y_fun
 
@@ -318,7 +321,8 @@ def define_y_e_function(ocp: AcadosOcp) -> cs.Function:
 
     x = model.x
 
-    y_e_fun = cs.Function("y_e_fun", [x], [model.cost_y_expr_e], ["x"], ["y_e"])
+    if ocp.cost.cost_type_e == "NONLINEAR_LS":
+        y_e_fun = cs.Function("y_e_fun", [x], [model.cost_y_expr_e], ["x"], ["y_e"])
 
     return y_e_fun
 
@@ -380,6 +384,18 @@ def define_nls_cost_function_0(ocp: AcadosOcp) -> cs.Function:
     )
 
     return nls_cost_function_0
+
+
+def define_external_cost_function_0(ocp: AcadosOcp) -> cs.Function:
+    return cs.Function("l_0", [ocp.model.x, ocp.model.u, ocp.model.p], [ocp.model.cost_expr_ext_cost_0])
+
+
+def define_external_cost_function(ocp: AcadosOcp) -> cs.Function:
+    return cs.Function("l", [ocp.model.x, ocp.model.u, ocp.model.p], [ocp.model.cost_expr_ext_cost])
+
+
+def define_external_cost_function_e(ocp: AcadosOcp) -> cs.Function:
+    return cs.Function("l_e", [ocp.model.x, ocp.model.p], [ocp.model.cost_expr_ext_cost_e])
 
 
 def get_state_labels(ocp: AcadosOcp) -> list[str]:
@@ -642,8 +658,6 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     # Equality constraints
     vars = struct_symSX([tuple(entries["variables"])])
 
-    print(vars["lbx_1"])
-
     # lam = struct_symSX([tuple(entries["multipliers"]["lam"])])
 
     pi = struct_symSX([tuple(entries["multipliers"]["pi"])])
@@ -666,7 +680,8 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     assert (
         nlp.h.sym.shape[0] == nlp.lam.sym.shape[0]
-    ), f"Dimension mismatch between h (inequality constraints, shape {nlp.h.sym.shape[0]}) and lam (multipliers, shape {nlp.lam.sym.shape[0]})"
+    ), f"Dimension mismatch between h (inequality constraints, shape {nlp.h.sym.shape[0]}) and \
+        lam (multipliers, shape {nlp.lam.sym.shape[0]})"
 
     # Build inequality constraint
 
@@ -674,29 +689,36 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     print(vars_val)
 
-    cost_function = define_nls_cost_function(ocp)
-    cost_function_e = define_nls_cost_function_e(ocp)
-    cost_function_0 = define_nls_cost_function_0(ocp)
+    if ocp.cost.cost_type == "NONLINEAR_LS":
+        cost_function = define_nls_cost_function(ocp)
+        cost_function_e = define_nls_cost_function_e(ocp)
+        cost_function_0 = define_nls_cost_function_0(ocp)
+
+        cost = 0
+
+        # Initial stage
+        stage_ = 0
+        cost += vars["dT", stage_] * cost_function_0(vars["x", stage_], vars["u", stage_])
+
+        # Middle stages
+        for stage_ in range(1, ocp.dims.N):
+            cost += vars["dT", stage_] * cost_function(vars["x", stage_], vars["u", stage_])
+
+        # # Add terminal cost
+        stage_ = ocp.dims.N
+        cost += cost_function_e(vars["x", stage_])
+
+    elif ocp.cost.cost_type == "EXTERNAL":
+        cost_function = define_external_cost_function(ocp)
+        cost_function_e = define_external_cost_function_e(ocp)
+        cost_function_0 = define_external_cost_function_0(ocp)
+
+        cost = 0
+        cost += cost_function_0(vars["x", 0], vars["u", 0], vars["p"])
+        cost += sum([cost_function(vars["x", stage], vars["u", stage], vars["p"]) for stage in range(1, ocp.dims.N)])
+        cost += cost_function_e(vars["x", ocp.dims.N], vars["p"])
 
     # nlp.cost.sym = 0
-
-    cost = 0
-
-    # stage_ = 0
-    # nlp.cost.sym += nlp.dT.sym["dT", stage_] * cost_function_0(nlp.w.sym["x", stage_], nlp.w.sym["u", stage_])
-
-    # Initial stage
-    stage_ = 0
-    cost += vars["dT", stage_] * cost_function_0(vars["x", stage_], vars["u", stage_])
-
-    # Middle stages
-    for stage_ in range(1, ocp.dims.N):
-        cost += vars["dT", stage_] * cost_function(vars["x", stage_], vars["u", stage_])
-    #     nlp.cost.sym += nlp.dT.sym["dT", stage_] * cost_function(nlp.w.sym["x", stage_], nlp.w.sym["u", stage_])
-
-    # # Add terminal cost
-    stage_ = ocp.dims.N
-    cost += cost_function_e(vars["x", stage_])
 
     # nlp.cost.fun = cs.Function("cost", [nlp.w.sym, nlp.dT.sym], [nlp.cost.sym], ["w", "dT"], ["cost"])
     # nlp.cost.val = 0
@@ -781,6 +803,27 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     nlp.u.sym = cs.vertcat(*nlp.vars.sym["u", :])
     nlp.u.fun = cs.Function("u", [nlp.vars.sym], [nlp.u.sym])
+
+    # Initial stage
+
+    # TODO: This needs checks if the constraints actually exist
+    # lbu_0 = np.ones((ocp.dims.nu,)) * ocp.constraints.lbu[0]
+    nlp.set(0, "lbu", ocp.constraints.lbu)
+    nlp.set(0, "lbx", ocp.constraints.lbx_0)
+    nlp.set(0, "ubu", ocp.constraints.ubu)
+    nlp.set(0, "ubx", ocp.constraints.ubx_0)
+
+    # Middle stages
+    for stage in range(1, ocp.dims.N):
+        nlp.set(stage, "lbx", ocp.constraints.lbx)
+        nlp.set(stage, "ubx", ocp.constraints.ubx)
+        nlp.set(stage, "lbu", ocp.constraints.lbu)
+        nlp.set(stage, "ubu", ocp.constraints.ubu)
+
+    # Final stage
+    stage = ocp.dims.N
+    nlp.set(stage, "lbx", ocp.constraints.lbx_e)
+    nlp.set(stage, "ubx", ocp.constraints.ubx_e)
 
     # z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam.sym)
 
@@ -1119,7 +1162,6 @@ def set_nlp_lam(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeM
     Returns:
         nlp: Updated NLP.
     """
-    test = multiplier_map(0, "lbx_0", ocp_solver.get(0, "lam"))
 
     lam = ocp_solver.get(0, "lam")
     nlp.lam.val["lbx_0"] = multiplier_map(0, "lbx_0", lam)
@@ -1171,7 +1213,7 @@ def print_nlp_vars(nlp: NLP):
 #         print(f"{val:<{max_len + 2}}{sym}")
 
 
-def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMultiplierMap) -> NLP:
+def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     """
     Update the NLP with the solution of the OCP solver.
 
