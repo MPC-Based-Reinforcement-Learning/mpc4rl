@@ -729,9 +729,10 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     nlp.vars.sym = vars
     nlp.vars.val = vars(0)
 
-    for stage in range(0, ocp.dims.N - 1):
-        nlp.vars.val[f"lbu_{stage}"] = ocp.constraints.lbu
-        nlp.vars.val[f"ubu_{stage}"] = ocp.constraints.ubu
+    if len(ocp.constraints.lbu) > 0:
+        for stage in range(0, ocp.dims.N - 1):
+            nlp.vars.val[f"lbu_{stage}"] = ocp.constraints.lbu
+            nlp.vars.val[f"ubu_{stage}"] = ocp.constraints.ubu
 
     # vars_val["dT", lambda x: cs.vertcat(*x)] = np.tile(ocp.solver_options.tf / ocp.dims.N, (1, ocp.dims.N))
     for stage in range(ocp.dims.N):
@@ -758,7 +759,9 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     nlp.pi.sym = pi
     nlp.pi.val = pi(0)
 
+    # nlp.L.sym = nlp.cost.sym + cs.dot(nlp.lam.sym, nlp.h.sym) + cs.dot(nlp.pi.sym, nlp.g.sym)
     nlp.L.sym = nlp.cost.sym + cs.dot(nlp.lam.sym, nlp.h.sym) + cs.dot(nlp.pi.sym, nlp.g.sym)
+
     nlp.L.fun = cs.Function("L", [nlp.vars.sym, nlp.pi.sym, nlp.lam.sym], [nlp.L.sym])
 
     w = []

@@ -1,92 +1,15 @@
 import numpy as np
-from acados_template import AcadosOcp, AcadosOcpSolver
-import casadi as cs
-
-from scipy.linalg import solve_discrete_are
+import gymnasium as gym
 import matplotlib.pyplot as plt
 
 
-def disc_dyn_expr(x, u, param):
-    return param["A"] @ x + param["B"] @ u + param["b"]
-
-
-def cost_expr_ext_cost(x, u, p):
-    f = get_parameter("f", p)
-    return 0.5 * (cs.mtimes([x.T, x]) + 0.5 * cs.mtimes([u.T, u])) + cs.mtimes([f.T, cs.vertcat(x, u)])
-
-
-def cost_expr_ext_cost_0(x, u, p):
-    V_0 = get_parameter("V_0", p)
-    return V_0 + cost_expr_ext_cost(x, u, p)
-
-
-def cost_expr_ext_cost_e(x, param, N):
-    return 0.5 * param["gamma"] ** N * cs.mtimes([x.T, solve_discrete_are(param["A"], param["B"], param["Q"], param["R"]), x])
-
-
-def get_parameter(field, p):
-    if field == "A":
-        return cs.reshape(p[:4], 2, 2)
-    elif field == "B":
-        return cs.reshape(p[4:6], 2, 1)
-    elif field == "b":
-        return cs.reshape(p[6:8], 2, 1)
-    elif field == "V_0":
-        return p[8]
-    elif field == "f":
-        return cs.reshape(p[9:12], 3, 1)
-
-
-def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
-    ocp = AcadosOcp()
-
-    ocp.model.name = "lti"
-
-    ocp.model.x = cs.SX.sym("x", 2)
-    ocp.model.u = cs.SX.sym("u", 1)
-
-    ocp.dims.N = 40
-
-    A = cs.SX.sym("A", 2, 2)
-    B = cs.SX.sym("B", 2, 1)
-    b = cs.SX.sym("b", 2, 1)
-    V_0 = cs.SX.sym("V_0", 1, 1)
-    f = cs.SX.sym("f", 3, 1)
-
-    ocp.model.p = cs.vertcat(cs.reshape(A, -1, 1), cs.reshape(B, -1, 1), cs.reshape(b, -1, 1), V_0, cs.reshape(f, -1, 1))
-    ocp.parameter_values = np.concatenate([param[key].T.reshape(-1, 1) for key in ["A", "B", "b", "V_0", "f"]])
-
-    ocp.model.disc_dyn_expr = A @ ocp.model.x + B @ ocp.model.u + b
-
-    ocp.cost.cost_type_0 = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost_0 = cost_expr_ext_cost_0(ocp.model.x, ocp.model.u, ocp.model.p)
-
-    ocp.cost.cost_type = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost = cost_expr_ext_cost(ocp.model.x, ocp.model.u, ocp.model.p)
-
-    ocp.cost.cost_type_e = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost_e = cost_expr_ext_cost_e(ocp.model.x, param, ocp.dims.N)
-
-    ocp.constraints.idxbx_0 = np.array([0, 1])
-    ocp.constraints.lbx_0 = np.array([0.0, 0.0])
-    ocp.constraints.ubx_0 = np.array([1.0, 1.0])
-
-    ocp.constraints.idxbx = np.array([0, 1])
-    ocp.constraints.lbx = np.array([-1.0, -1.0])
-    ocp.constraints.ubx = np.array([1.0, 1.0])
-
-    ocp.constraints.idxbu = np.array([0])
-    ocp.constraints.lbu = np.array([-1.0])
-    ocp.constraints.ubu = np.array([1.0])
-
-    ocp.solver_options.tf = ocp.dims.N
-    ocp.solver_options.integrator_type = "DISCRETE"
-
-    return AcadosOcpSolver(ocp)
+from rlmpc.gym.linear_system.environment import LinearSystemEnv  # noqa: F401
+from rlmpc.mpc.linear_system.acados import AcadosMPC
+from stable_baselines3.common.buffers import ReplayBuffer
 
 
 def test_acados_ocp_solver(param: dict) -> None:
-    ocp_solver = setup_acados_ocp_solver(param)
+    ocp_solver = AcadosMPC(param).ocp_solver
 
     x0 = np.array([[0.5], [0.5]])
 
@@ -108,6 +31,42 @@ def test_acados_ocp_solver(param: dict) -> None:
     plt.show()
 
 
+def test_acados_mpc(param):
+    env = gym.make("LinearSystemEnv-v0", lb_noise=-0.1, ub_noise=0.1)
+
+    mpc = AcadosMPC(param)
+
+    replay_buffer = ReplayBuffer(
+        buffer_size=50,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        handle_timeout_termination=False,
+    )
+
+    obs, _ = env.reset()
+    for _ in range(replay_buffer.buffer_size):
+        action = mpc.get_action(obs)
+        next_obs, reward, done, _, info = env.step(action.astype(np.float32))
+        replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
+        obs = next_obs
+
+    plot_test_acados_mpc(replay_buffer)
+
+
+def plot_test_acados_mpc(replay_buffer: ReplayBuffer):
+    X = np.vstack([replay_buffer.observations[i].reshape(-1) for i in range(replay_buffer.size())])
+    U = np.vstack([replay_buffer.actions[i].reshape(-1) for i in range(replay_buffer.size())])
+
+    plt.figure(1)
+    plt.subplot(211)
+    plt.grid()
+    plt.plot(X)
+    plt.subplot(212)
+    plt.plot(U)
+    plt.grid()
+    plt.show()
+
+
 if __name__ == "__main__":
     param = {
         "A": np.array([[1.0, 0.25], [0.0, 1.0]]),
@@ -120,4 +79,4 @@ if __name__ == "__main__":
         "V_0": np.array([1e-3]),
     }
 
-    test_acados_ocp_solver(param)
+    test_acados_mpc(param)

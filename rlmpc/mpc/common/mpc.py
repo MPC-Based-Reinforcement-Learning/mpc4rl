@@ -22,6 +22,8 @@ class MPC(ABC):
 
     #     :return: the parameters
     #     """
+    def get_parameters(self) -> np.ndarray:
+        return self.get_p()
 
     def get_action(self, x0: np.ndarray) -> np.ndarray:
         """
@@ -189,9 +191,6 @@ class MPC(ABC):
 
         return status
 
-    # def get_parameters(self) -> np.ndarray:
-    #     return self._parameters
-
     def reset(self, x0: np.ndarray):
         self.ocp_solver.reset()
 
@@ -241,7 +240,7 @@ class MPC(ABC):
         Returns:
             dL_dp: Sensitivity of the Lagrangian with respect to the parameters.
         """
-        return self.nlp.dL_dp.val.full().flatten()
+        return self.nlp.dL_dp.val
 
     def get_L(self) -> float:
         """
@@ -250,7 +249,7 @@ class MPC(ABC):
         Returns:
             L: Lagrangian.
         """
-        return self.nlp.L.val
+        return float(self.nlp.L.val)
 
     def get_V(self) -> float:
         """
