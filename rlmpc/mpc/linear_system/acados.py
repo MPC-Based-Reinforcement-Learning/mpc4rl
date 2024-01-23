@@ -1,5 +1,5 @@
 import numpy as np
-from acados_template import AcadosOcp, AcadosOcpSolver
+from acados_template import AcadosOcp, AcadosOcpSolver, AcadosOcpConstraints
 import casadi as cs
 
 from scipy.linalg import solve_discrete_are
@@ -92,16 +92,20 @@ def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
     ocp.constraints.ubx_0 = np.array([1.0, 1.0])
 
     ocp.constraints.idxbx = np.array([0, 1])
-    ocp.constraints.lbx = np.array([-1.0, -1.0])
+    ocp.constraints.lbx = np.array([0.0, -1.0])
     ocp.constraints.ubx = np.array([+1.0, +1.0])
 
-    # ocp.dims.nsbx = 2
-    # ocp.dims.ns = ocp.dims.nsbx
-    ocp.constraints.idxsbx = np.array([0, 1])
-    ocp.cost.zl = np.array([1e2, 1e2])
-    ocp.cost.zu = np.array([1e2, 1e2])
-    ocp.cost.Zl = np.diag([0, 0])
-    ocp.cost.Zu = np.diag([0, 0])
+    # ocp.constraints.idxsbx = np.array([0, 1])
+    # ocp.cost.zl = np.array([1e2, 1e2])
+    # ocp.cost.zu = np.array([1e2, 1e2])
+    # ocp.cost.Zl = np.diag([0, 0])
+    # ocp.cost.Zu = np.diag([0, 0])
+
+    ocp.constraints.idxsbx = np.array([0])
+    ocp.cost.zl = np.array([1e2])
+    ocp.cost.zu = np.array([1e2])
+    ocp.cost.Zl = np.diag([0])
+    ocp.cost.Zu = np.diag([0])
 
     ocp.constraints.idxbu = np.array([0])
     ocp.constraints.lbu = np.array([-1.0])

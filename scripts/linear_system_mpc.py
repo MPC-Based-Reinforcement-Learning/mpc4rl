@@ -46,6 +46,7 @@ def test_acados_mpc(param):
     obs, _ = env.reset()
     for _ in range(replay_buffer.buffer_size):
         action = mpc.get_action(obs)
+        mpc.update_nlp()
         next_obs, reward, done, _, info = env.step(action.astype(np.float32))
         replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
         obs = next_obs
