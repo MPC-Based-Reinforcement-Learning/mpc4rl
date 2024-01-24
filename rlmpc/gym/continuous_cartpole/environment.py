@@ -186,12 +186,12 @@ class ContinuousCartPoleSwingUpEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         return np.array(self.state, dtype=np.float32), {}
 
     def _reward_fn(self, state, action):
-        reward = 0
-        reward += 2.0 * (state[0] ** 2)
-        reward += 0.01 * (state[1] ** 2)
-        reward += 2.0 * normalize_angle(state[2]) ** 2
-        reward += 0.01 * (state[3] ** 2)
-        reward += 0.001 * (action[0] ** 2)
+        reward = state[0] ** 2 + state[2] ** 2
+        # reward += 2.0 * (state[0] ** 2)
+        # reward += 0.01 * (state[1] ** 2)
+        # reward += 2.0 * normalize_angle(state[2]) ** 2
+        # reward += 0.01 * (state[3] ** 2)
+        # reward += 0.001 * (action[0] ** 2)
         return reward
 
     # def _terminal(self, state):

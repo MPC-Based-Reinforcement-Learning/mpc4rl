@@ -108,7 +108,7 @@ def compute_approximations(results: dict[dict]) -> dict[dict]:
     return results
 
 
-if __name__ == "__main__":
+def main():
     config = read_config(f"{get_root_path()}/config/cartpole.yaml")
 
     mpc = AcadosMPC(config=config["mpc"], build=True)
@@ -180,3 +180,66 @@ if __name__ == "__main__":
     plt.savefig("cartpole_mpc_sensitivities.pdf")
 
     plt.show()
+
+
+def test_dV_dp(mpc: AcadosMPC) -> None:
+    def set_up_test_params(p_nom: np.ndarray, i_param: int = 0, n_test_params=50) -> list[np.ndarray]:
+        p_min = p_nom.copy()
+        p_max = p_nom.copy()
+
+        p_min[i_param] = 0.9 * p_nom[i_param]
+        p_max[i_param] = 1.1 * p_nom[i_param]
+
+        return [p_min + (p_max - p_min) * i / n_test_params for i in range(n_test_params)]
+
+    i_param = 0
+    p_test = set_up_test_params(p_nom=mpc.get_parameters(), i_param=i_param, n_test_params=50)
+
+    # plt.figure(1)
+    # plt.plot(np.vstack(p_test))
+    # plt.show()
+
+    V = []
+    dV_dp = []
+
+    x0 = np.array([0.0, 0.0, np.pi / 2, 0.0])
+
+    for i in tqdm(range(len(p_test))):
+        p_i = p_test[i]
+        for stage in range(mpc.ocp_solver.acados_ocp.dims.N + 1):
+            mpc.set(stage, "p", p_i)
+
+        mpc.update(x0)
+
+        V.append(mpc.get_V())
+
+        dV_dp.append(mpc.get_dV_dp())
+
+        # print("Comparing dL_dp and dL_dp1")
+        # # print(f"dL_dp1: {mpc.nlp.dL_dp1.val}")
+        # # print(f"dL_dp[1]: {mpc.nlp.dL_dp.val[1]}")
+        # print(f"dV_dp1: {dV_dp1[-1]}")
+        # print(f"dV_dp[1]: {dV_dp[-1][1]}")
+        # print("")
+
+    V = np.array(V)
+
+    dV_dp_true = np.gradient(V, p_test[1][i_param] - p_test[0][i_param])[1:-1]
+
+    dV_dp = np.vstack(dV_dp[1:-1])
+    # dV_dp1 = np.vstack(dV_dp1[1:-1])
+
+    plt.figure(1)
+    plt.plot(dV_dp_true, label="finite difference")
+    plt.plot(dV_dp[:, i_param], label="AD")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+if __name__ == "__main__":
+    config = read_config(f"{get_root_path()}/config/cartpole.yaml")
+
+    mpc = AcadosMPC(config=config["mpc"], build=True)
+
+    test_dV_dp(mpc=mpc)

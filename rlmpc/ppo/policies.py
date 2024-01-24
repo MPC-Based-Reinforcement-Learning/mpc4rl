@@ -18,7 +18,7 @@ import torch.nn as nn
 
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
-from rlmpc.common.mpc import MPC
+from mpc.common.mpc import MPC
 
 from gymnasium import spaces
 
@@ -82,9 +82,7 @@ class MPCActorCriticPolicy(ActorCriticPolicy):
 
         return action
 
-    def forward(
-        self, obs: th.Tensor, deterministic: bool = False
-    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def forward(self, obs: th.Tensor, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -94,9 +92,7 @@ class MPCActorCriticPolicy(ActorCriticPolicy):
         """
         raise NotImplementedError("forward not implemented for MPCActorCriticPolicy")
 
-    def evaluate_actions(
-        self, obs: th.Tensor, actions: th.Tensor
-    ) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
+    def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
         """
         Evaluate actions according to the current policy,
         given the observations.
@@ -121,9 +117,7 @@ class MPCActorCriticPolicy(ActorCriticPolicy):
         # return values, log_prob, entropy
 
         # Throw error if called
-        raise NotImplementedError(
-            "evaluate_actions not implemented for MPCActorCriticPolicy"
-        )
+        raise NotImplementedError("evaluate_actions not implemented for MPCActorCriticPolicy")
 
     def predict_values(self, obs: th.Tensor) -> th.Tensor:
         """
@@ -137,9 +131,7 @@ class MPCActorCriticPolicy(ActorCriticPolicy):
         # return self.value_net(latent_vf)
 
         # Throw error if called
-        raise NotImplementedError(
-            "predict_values not implemented for MPCActorCriticPolicy"
-        )
+        raise NotImplementedError("predict_values not implemented for MPCActorCriticPolicy")
 
 
 class MPCMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
@@ -235,9 +227,7 @@ class MPCMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
 
         return action
 
-    def forward(
-        self, obs: th.Tensor, deterministic: bool = False
-    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def forward(self, obs: th.Tensor, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -259,9 +249,7 @@ class MPCMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         # return self.value_net(latent_vf)
 
         # Throw error if called
-        raise NotImplementedError(
-            "predict_values not implemented for MPCActorCriticPolicy"
-        )
+        raise NotImplementedError("predict_values not implemented for MPCActorCriticPolicy")
 
 
 # class ContinuousCritic(BaseModel):

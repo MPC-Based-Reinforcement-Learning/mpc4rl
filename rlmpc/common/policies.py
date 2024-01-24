@@ -10,7 +10,7 @@ import torch.nn as nn
 
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
-from rlmpc.common.mpc import MPC
+from mpc.common.mpc import MPC
 
 from gymnasium import spaces
 
