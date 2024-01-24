@@ -246,5 +246,3 @@ if __name__ == "__main__":
     x0 = np.array([0.0, 0.0, np.pi / 2, 0.0])
     u0 = np.array([-30.0])
     test_acados_ocp_nlp(mpc=mpc, x0=x0, u0=u0, plot=True)
-
-    # test_dV_dp(mpc=mpc)
