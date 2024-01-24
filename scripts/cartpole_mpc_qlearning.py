@@ -250,7 +250,7 @@ if __name__ == "__main__":
             plot_episode(replay_buffer, td_error, dQ_dp, dp)
             plt.show()
 
-        p_new = mpc.get_p() - np.mean(dp, axis=0)
+        p_new = mpc.get_p() + np.mean(dp, axis=0)
 
         print("p", mpc.get_p())
         print("p new", p_new)

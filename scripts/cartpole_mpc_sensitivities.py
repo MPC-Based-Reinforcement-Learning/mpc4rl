@@ -5,6 +5,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from linear_system_mpc_nlp import test_acados_ocp_nlp
 
 
 def compute_state_action_value_approximation(
@@ -242,4 +243,8 @@ if __name__ == "__main__":
 
     mpc = AcadosMPC(config=config["mpc"], build=True)
 
-    test_dV_dp(mpc=mpc)
+    x0 = np.array([0.0, 0.0, np.pi / 2, 0.0])
+    u0 = np.array([-30.0])
+    test_acados_ocp_nlp(mpc=mpc, x0=x0, u0=u0, plot=True)
+
+    # test_dV_dp(mpc=mpc)

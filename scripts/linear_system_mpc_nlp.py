@@ -14,12 +14,9 @@ def setup_p_test(p: np.ndarray, i_param: int = 0, n_test_params: int = 50) -> li
     return [p_min + (p_max - p_min) * i / n_test_params for i in range(n_test_params)]
 
 
-def test_acados_ocp_nlp(param: dict, plot: bool = False) -> None:
-    mpc = AcadosMPC(param)
-
-    x0 = np.array([[0.2], [0.2]])
-    u0 = np.array([-0.5])
-
+def test_acados_ocp_nlp(
+    mpc: AcadosMPC, x0: np.ndarray = np.array([[0.2], [0.2]]), u0: np.ndarray = np.array([-0.5]), plot: bool = False
+) -> None:
     for i_param in tqdm(range(mpc.ocp_solver.acados_ocp.dims.np), desc="Testing dV_dp for non-zero parameters"):
         p_test = setup_p_test(mpc.get_parameters(), i_param, n_test_params=50)
 
@@ -47,6 +44,16 @@ def test_acados_ocp_nlp(param: dict, plot: bool = False) -> None:
         dV_dp = np.vstack(dV_dp[1:-1])
 
         np.allclose(dV_dp_true, dV_dp[:, i_param], atol=1e-6)
+
+        if plot:
+            plt.figure(1)
+            plt.plot(dV_dp_true, label="finite difference")
+            plt.plot(dV_dp[:, i_param], label="AD")
+            plt.ylabel(f"dV_dp[{i_param}]")
+            plt.xlabel("param variation [-]")
+            plt.legend()
+            plt.grid()
+            plt.show()
 
     for i_param in tqdm(range(mpc.ocp_solver.acados_ocp.dims.np), desc="Testing dQ_dp for non-zero parameters"):
         p_test = setup_p_test(mpc.get_parameters(), i_param, n_test_params=50)
@@ -99,4 +106,5 @@ if __name__ == "__main__":
         "V_0": np.array([1e-3]),
     }
 
-    test_acados_ocp_nlp(param)
+    mpc = AcadosMPC(param)
+    test_acados_ocp_nlp(mpc)
