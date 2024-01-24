@@ -1,5 +1,5 @@
 import numpy as np
-from acados_template import AcadosOcp, AcadosOcpSolver, AcadosOcpConstraints
+from acados_template import AcadosOcp, AcadosOcpSolver
 import casadi as cs
 
 from scipy.linalg import solve_discrete_are
@@ -18,12 +18,8 @@ class AcadosMPC(MPC):
         super(AcadosMPC, self).__init__()
 
         self.ocp_solver = setup_acados_ocp_solver(param)
-        self.ocp = self.ocp_solver.acados_ocp
 
-        for stage in range(self.ocp.dims.N + 1):
-            self.ocp_solver.set(stage, "p", self.ocp.parameter_values)
-
-        self.nlp = build_nlp(self.ocp)
+        self.nlp = build_nlp(self.ocp_solver.acados_ocp)
 
 
 def disc_dyn_expr(x, u, param):
@@ -92,7 +88,7 @@ def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
     ocp.constraints.ubx_0 = np.array([1.0, 1.0])
 
     ocp.constraints.idxbx = np.array([0, 1])
-    ocp.constraints.lbx = np.array([0.0, -1.0])
+    ocp.constraints.lbx = np.array([-0.0, -1.0])
     ocp.constraints.ubx = np.array([+1.0, +1.0])
 
     # ocp.constraints.idxsbx = np.array([0, 1])
@@ -116,4 +112,9 @@ def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
     ocp.solver_options.nlp_solver_type = "SQP"
     ocp.solver_options.hessian_approx = "EXACT"
 
-    return AcadosOcpSolver(ocp)
+    ocp_solver = AcadosOcpSolver(ocp)
+
+    for stage in range(ocp.dims.N + 1):
+        ocp_solver.set(stage, "p", ocp.parameter_values)
+
+    return ocp_solver

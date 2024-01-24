@@ -1,7 +1,7 @@
 import numpy as np
 from abc import ABC
 from acados_template import AcadosOcp, AcadosOcpSolver
-from rlmpc.mpc.nlp import NLP, update_nlp
+from rlmpc.mpc.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
 
 
 class MPC(ABC):
@@ -156,6 +156,18 @@ class MPC(ABC):
     def get_p(self) -> np.ndarray:
         return self.nlp.vars.val["p"].full().flatten()
 
+    def get_parameter_values(self) -> np.ndarray:
+        return self.get_p()
+
+    def get_parameter_labels(self) -> list:
+        return get_parameter_labels(self.ocp_solver.acados_ocp)
+
+    def get_state_labels(self) -> list:
+        return get_state_labels(self.ocp_solver.acados_ocp)
+
+    def get_input_labels(self) -> list:
+        return get_input_labels(self.ocp_solver.acados_ocp)
+
     def update(self, x0: np.ndarray) -> int:
         """
         Update the solution of the OCP solver.
@@ -228,8 +240,8 @@ class MPC(ABC):
         :param action: Action to scale
         :return: Scaled action
         """
-        low = self.ocp.constraints.lbu
-        high = self.ocp.constraints.ubu
+        low = self.ocp_solver.acados_ocp.constraints.lbu
+        high = self.ocp_solver.acados_ocp.constraints.ubu
 
         return 0.5 * (high - low) * (action + 1.0) + low
 
@@ -240,7 +252,7 @@ class MPC(ABC):
         Returns:
             dL_dp: Sensitivity of the Lagrangian with respect to the parameters.
         """
-        return self.nlp.dL_dp.val
+        return self.nlp.dL_dp.val.full()
 
     def get_L(self) -> float:
         """
