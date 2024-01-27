@@ -337,6 +337,23 @@ class NLP:
 
         return 0
 
+    def get(self, stage_, field_):
+        if field_ in ["x", "u", "p", "dT"]:
+            return self.vars.val[field_, stage_]
+        elif field_ in ["lbx", "ubx", "lbu", "ubu", "lsbx", "usbx", "lh", "uh", "lsh", "ush"]:
+            return self.vars.val[f"{field_}_{stage_}"]
+        elif field_ == "sl":
+            return self.get_sl(stage_)
+        elif field_ == "su":
+            return self.get_su(stage_)
+        elif field_ == "pi":
+            return self.pi.val["pi", stage_]
+        elif field_ == "lam":
+            # return cs.vertcat(*[self.lam_dict[key] for key in self.lam_dict.keys()])
+            raise NotImplementedError("Not implemented yet.")
+        else:
+            raise Exception(f"Field {field_} not supported.")
+
     def get_residuals(self):
         return [
             self.get_stationarity_residual(),
@@ -1731,23 +1748,8 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
 
     nlp.lam.val = cs.vertcat(*list(nlp.lam_dict.values()))
 
-    # sl = nlp.get_sl(0)
-
-    # print(ocp_solver.get(0, "lam") - nlp.lam.val[:24])
-    # print(ocp_solver.get(1, "lam") - nlp.lam.val[24:44])
-
-    # print(nlp.lam_dict["slbx_1"])
-
     nlp.x.val = nlp.x.fun(nlp.vars.val)
     nlp.u.val = nlp.u.fun(nlp.vars.val)
-
-    assert np.allclose(
-        nlp.x.val, np.vstack([ocp_solver.get(stage, "x") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]), atol=1e-6
-    ), "State mismatch between NLP and OCP solver."
-
-    assert np.allclose(
-        nlp.u.val, np.vstack([ocp_solver.get(stage, "u") for stage in range(ocp_solver.acados_ocp.dims.N)]), atol=1e-6
-    ), "Control mismatch between NLP and OCP solver."
 
     nlp.cost.val = nlp.cost.fun(nlp.vars.val)
     nlp.h.val = nlp.h.fun(nlp.vars.val)
@@ -1763,14 +1765,52 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     nlp.dR_dz.val = nlp.dR_dz.fun(nlp.vars.val, nlp.pi.val, nlp.lam.val)
     nlp.dR_dp.val = nlp.dR_dp.fun(nlp.vars.val, nlp.pi.val, nlp.lam.val)
 
+    assert np.allclose(
+        nlp.u.val, np.vstack([ocp_solver.get(stage, "u") for stage in range(ocp_solver.acados_ocp.dims.N)]), atol=1e-6
+    ), "Control mismatch between NLP and OCP solver."
+
+    assert np.allclose(
+        nlp.x.val, np.vstack([ocp_solver.get(stage, "x") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]), atol=1e-6
+    ), "State mismatch between NLP and OCP solver."
+
+    assert np.allclose(
+        nlp.pi.val.cat.full().flatten(),
+        np.concatenate([ocp_solver.get(stage, "pi") for stage in range(ocp_solver.acados_ocp.dims.N)]),
+        atol=1e-6,
+    ), "Lagrange multipliers (equality constraints) mismatch between NLP and OCP solver."
+
+    assert np.allclose(
+        nlp.lam.val.full().flatten(),
+        np.concatenate([ocp_solver.get(stage, "lam") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]),
+        atol=1e-6,
+    ), "Lagrange multipliers (inequality constraints) mismatch between NLP and OCP solver."
+
+    assert np.allclose(
+        np.concatenate([nlp.get(stage, "sl") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]),
+        np.concatenate([ocp_solver.get(stage, "sl") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]),
+        atol=1e-6,
+    ), "Slack variables mismatch between NLP and OCP solver."
+
+    assert np.allclose(
+        np.concatenate([nlp.get(stage, "su") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]),
+        np.concatenate([ocp_solver.get(stage, "su") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]),
+        atol=1e-6,
+    ), "Slack variables mismatch between NLP and OCP solver."
+
     assert abs(nlp.cost.val - ocp_solver.get_cost()) < 1e-1, "Cost mismatch between NLP and OCP solver."
 
     assert np.allclose(nlp.g.val, 0.0, atol=1e-6), "Equality constraints are not satisfied."
 
-    if not np.all(nlp.h.val < 1e-6):
-        nlp.print_inequality_constraints()
-
     assert np.all(nlp.h.val < 1e-6), "Inequality constraints are not satisfied."
+
+    assert np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6), "Complementary slackness not satisfied."
+
+    assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
+
+    assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
+
+    # if not np.all(nlp.h.val < 1e-6):
+    #     nlp.print_inequality_constraints()
 
     # Print complementary slackness where it is not satisfied
     # for i in range(nlp.lam.val.shape[0]):
@@ -1786,12 +1826,6 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     #     print(nlp.vars.val["ubu_0"])
     #     print(nlp.vars.val["u", 0])
     #     print("")
-
-    assert np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6), "Complementary slackness not satisfied."
-
-    assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
-
-    assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
 
     # print(nlp.dL_dx.val[:2])
 
