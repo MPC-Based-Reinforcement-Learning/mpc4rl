@@ -18,6 +18,7 @@ def main():
             "l": np.array([1.0, 1.0, 1.0, 1.0]).reshape(-1, 1),
             "Vf": np.array([1.0, 1.0]).reshape(-1, 1),
         },
+        # "c": {"lam": 1.0, "l": 1.0, "Vf": 1.0, "f": 0.0},
         "c": {"lam": 1.0, "l": 1.0, "Vf": 1.0, "f": 0.0},
         "xb": {"x_l": np.array([25.0, 40.0]), "x_u": np.array([100.0, 80.0])},
     }
@@ -59,8 +60,11 @@ def main():
 
     Sl = []
     Su = []
-    for _ in range(replay_buffer.buffer_size):
-        action = mpc.ocp_solver.solve_for_x0(obs)
+    for i in range(replay_buffer.buffer_size):
+        print(f"{i}: {obs}")
+        action = mpc.get_action(obs)
+
+        mpc.update_nlp()
 
         Sl.append(mpc.ocp_solver.get(0, "sl"))
         Su.append(mpc.ocp_solver.get(0, "su"))
@@ -76,7 +80,7 @@ def main():
 
     bounds_kwargs = {"linestyle": "--", "color": "r"}
 
-    h = np.hstack([cost_param["xb"]["x_l"] - X, X - cost_param["xb"]["x_u"]])
+    # h = np.hstack([cost_param["xb"]["x_l"] - X, X - cost_param["xb"]["x_u"]])
 
     plt.figure(1)
     for i in range(2):

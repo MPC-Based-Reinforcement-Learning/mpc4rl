@@ -9,6 +9,17 @@ from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER
 from matplotlib import pyplot as plt
 
 
+def assign_slices_to_idx(stage: int, idx: dict[slice], dims: dict[int]) -> dict[slice]:
+    keys = list(dims.keys())
+    for i, key in enumerate(dims.keys()):
+        if i == 0:
+            idx[f"{key}_{stage}"] = slice(0, dims[key])
+        else:
+            idx[f"{key}_{stage}"] = slice(idx[f"{keys[i-1]}_{stage}"].stop, idx[f"{keys[i-1]}_{stage}"].stop + dims[key])
+
+    return idx
+
+
 class LagrangeMultiplierMap(object):
     """
     Class to store dimensions of constraints
@@ -23,78 +34,98 @@ class LagrangeMultiplierMap(object):
 
         lam_idx = dict()
 
-        # Initial values
-        lam_idx["lbu_0"] = slice(0, ocp.dims.nu)
-        lam_idx["lbx_0"] = slice(lam_idx["lbu_0"].stop, lam_idx["lbu_0"].stop + ocp.dims.nx)
-        lam_idx["ubu_0"] = slice(lam_idx["lbx_0"].stop, lam_idx["lbx_0"].stop + ocp.dims.nu)
-        lam_idx["ubx_0"] = slice(lam_idx["ubu_0"].stop, lam_idx["ubu_0"].stop + ocp.dims.nx)
-
-        # test = np.arange(0, 10)
-        # print(test[idx["lbu_0"]])
-        # print(test[idx["lbx_0"]])
-        # print(test[idx["ubu_0"]])
-        # print(test[idx["ubx_0"]])
+        # Initial stage
+        lam_idx = assign_slices_to_idx(
+            stage=0,
+            idx=lam_idx,
+            dims={
+                "lbu": ocp.dims.nu,
+                "lbx": ocp.dims.nx,
+                "lh": ocp.dims.nh,
+                "ubu": ocp.dims.nu,
+                "ubx": ocp.dims.nx,
+                "uh": ocp.dims.nh,
+                "lsh": ocp.dims.nsh,
+                "ush": ocp.dims.nsh,
+            },
+        )
 
         # Middle stages
-
         for stage in range(1, ocp.dims.N):
-            lam_idx[f"lbu_{stage}"] = slice(0, len(ocp.constraints.idxbu))
-            lam_idx[f"lbx_{stage}"] = slice(
-                lam_idx[f"lbu_{stage}"].stop, lam_idx[f"lbu_{stage}"].stop + len(ocp.constraints.idxbx)
-            )
-            lam_idx[f"ubu_{stage}"] = slice(
-                lam_idx[f"lbx_{stage}"].stop, lam_idx[f"lbx_{stage}"].stop + len(ocp.constraints.idxbu)
-            )
-            lam_idx[f"ubx_{stage}"] = slice(
-                lam_idx[f"ubu_{stage}"].stop, lam_idx[f"ubu_{stage}"].stop + len(ocp.constraints.idxbx)
-            )
-            lam_idx[f"lsbx_{stage}"] = slice(
-                lam_idx[f"ubx_{stage}"].stop, lam_idx[f"ubx_{stage}"].stop + len(ocp.constraints.idxsbx)
-            )
-            lam_idx[f"usbx_{stage}"] = slice(
-                lam_idx[f"lsbx_{stage}"].stop, lam_idx[f"lsbx_{stage}"].stop + len(ocp.constraints.idxsbx)
+            lam_idx = assign_slices_to_idx(
+                stage=stage,
+                idx=lam_idx,
+                dims={
+                    "lbu": ocp.dims.nbu,
+                    "lbx": ocp.dims.nbx,
+                    "lh": ocp.dims.nh,
+                    "ubu": ocp.dims.nbu,
+                    "ubx": ocp.dims.nbx,
+                    "uh": ocp.dims.nh,
+                    "lsbu": ocp.dims.nsbu,
+                    "lsbx": ocp.dims.nsbx,
+                    "lsh": ocp.dims.nsh,
+                    "usbu": ocp.dims.nsbu,
+                    "usbx": ocp.dims.nsbx,
+                    "ush": ocp.dims.nsh,
+                },
             )
 
         # Final stage
-        stage = ocp.dims.N
-        lam_idx[f"lbx_{stage}"] = slice(0, len(ocp.constraints.idxbx_e))
-        lam_idx[f"ubx_{stage}"] = slice(
-            lam_idx[f"lbx_{stage}"].stop, lam_idx[f"lbx_{stage}"].stop + len(ocp.constraints.idxbx_e)
+        lam_idx = assign_slices_to_idx(
+            stage=ocp.dims.N,
+            idx=lam_idx,
+            dims={
+                "lbx": ocp.dims.nbx_e,
+                "lh": ocp.dims.nh_e,
+                "ubx": ocp.dims.nbx_e,
+                "uh": ocp.dims.nh_e,
+                "lsbx": ocp.dims.nsbx_e,
+                "lsh": ocp.dims.nsh_e,
+                "usbx": ocp.dims.nsbx_e,
+                "ush": ocp.dims.nsh_e,
+            },
         )
-        lam_idx[f"lsbx_{stage}"] = slice(
-            lam_idx[f"ubx_{stage}"].stop, lam_idx[f"ubx_{stage}"].stop + len(ocp.constraints.idxsbx_e)
-        )
-        lam_idx[f"usbx_{stage}"] = slice(
-            lam_idx[f"lsbx_{stage}"].stop, lam_idx[f"lsbx_{stage}"].stop + len(ocp.constraints.idxsbx_e)
-        )
-
-        # Loop over all constraints and count the number of constraints of each type. Store the indices in a dict.
-        # for stage, idx in enumerate(idx_at_stage):
-        #     _start = 0
-        #     _end = 0
-        #     for attr in dir(constraints):
-        #         if idx.keys().__contains__(attr):
-        #             _end += len(getattr(constraints, attr))
-        #             idx[attr] = slice(_start, _end)
-        #             _start = _end
 
         # self.idx_at_stage = idx_at_stage
         self.lam_idx = lam_idx
 
         s_idx = dict()
+
+        # Initial stage
+        s_idx = assign_slices_to_idx(stage=0, idx=s_idx, dims={"slbx": ocp.dims.nsbx, "slh": ocp.dims.nsh})
+        s_idx = assign_slices_to_idx(stage=0, idx=s_idx, dims={"subx": ocp.dims.nsbx, "suh": ocp.dims.nsh})
+
+        # Middle stages
         for stage in range(1, ocp.dims.N):
-            s_idx[f"slbu_{stage}"] = slice(0, len(ocp.constraints.idxsbu))
-            s_idx[f"slbx_{stage}"] = slice(
-                s_idx[f"slbu_{stage}"].stop, s_idx[f"slbu_{stage}"].stop + len(ocp.constraints.idxsbx)
+            s_idx = assign_slices_to_idx(
+                stage=stage, idx=s_idx, dims={"slbu": ocp.dims.nsbu, "slbx": ocp.dims.nsbx, "slh": ocp.dims.nsh}
+            )
+            s_idx = assign_slices_to_idx(
+                stage=stage, idx=s_idx, dims={"subu": ocp.dims.nsbu, "subx": ocp.dims.nsbx, "suh": ocp.dims.nsh}
             )
 
-            # sl and su are the same for the middle stages
-            s_idx[f"subu_{stage}"] = s_idx[f"slbu_{stage}"]
-            s_idx[f"subx_{stage}"] = s_idx[f"slbx_{stage}"]
+            # s_idx[f"subu_{stage}"] = s_idx[f"slbu_{stage}"]
+            # s_idx[f"subx_{stage}"] = s_idx[f"slbx_{stage}"]
+            # s_idx[f"suh_{stage}"] = s_idx[f"slh_{stage}"]
 
-        stage = ocp.dims.N
-        s_idx[f"slbx_{stage}"] = slice(0, len(ocp.constraints.idxsbx_e))
-        s_idx[f"subx_{stage}"] = s_idx[f"slbx_{stage}"]
+        # for stage in range(1, ocp.dims.N):
+        #     s_idx[f"slbu_{stage}"] = slice(0, len(ocp.constraints.idxsbu))
+        #     s_idx[f"slbx_{stage}"] = slice(
+        #         s_idx[f"slbu_{stage}"].stop, s_idx[f"slbu_{stage}"].stop + len(ocp.constraints.idxsbx)
+        #     )
+
+        #     # sl and su are the same for the middle stages
+        #     s_idx[f"subu_{stage}"] = s_idx[f"slbu_{stage}"]
+        #     s_idx[f"subx_{stage}"] = s_idx[f"slbx_{stage}"]
+
+        s_idx = assign_slices_to_idx(stage=ocp.dims.N, idx=s_idx, dims={"slbx": ocp.dims.nsbx, "slh": ocp.dims.nsh})
+        s_idx = assign_slices_to_idx(stage=ocp.dims.N, idx=s_idx, dims={"subx": ocp.dims.nsbx, "suh": ocp.dims.nsh})
+        # s_idx[f"subx_{stage}"] = s_idx[f"slbx_{stage}"]
+        # s_idx[f"suh_{stage}"] = s_idx[f"slh_{stage}"]
+
+        # s_idx[f"slbx_{stage}"] = slice(0, len(ocp.constraints.idxsbx_e))
+        # s_idx = assign_slices_to_idx(stage=stage, idx=s_idx, dims=dims)
 
         self.s_idx = s_idx
 
@@ -234,7 +265,7 @@ class NLP:
         if field_ in ["x", "u", "p", "dT"]:
             self.vars.val[field_, stage_] = value_
             return 0
-        elif field_ in ["lbx", "ubx", "lbu", "ubu", "lsbx", "usbx"]:
+        elif field_ in ["lbx", "ubx", "lbu", "ubu", "lsbx", "usbx", "lh", "uh", "lsh", "ush"]:
             self.vars.val[f"{field_}_{stage_}"] = value_
             return 0
         # elif field_ in ["lbx_0", "ubx_0", "lbu_0", "ubu_0", "lbx_e", "ubx_e"]:
@@ -251,31 +282,58 @@ class NLP:
         else:
             raise Exception(f"Field {field_} not supported.")
 
+    def get_existing_sl(self, stage_) -> list[str]:
+        return list(
+            set([f"s{key}_{stage_}" for key in ["lbu", "lbx", "lg", "lh", "lphi"]]).intersection(set(self.vars.val.keys()))
+        )
+
+    def get_existing_su(self, stage_) -> list[str]:
+        return list(
+            set([f"s{key}_{stage_}" for key in ["ubu", "ubx", "ug", "uh", "uphi"]]).intersection(set(self.vars.val.keys()))
+        )
+
     def set_sl(self, stage_, value_):
-        if f"slbx_{stage_}" in self.vars.val.keys():
-            self.vars.val[f"slbx_{stage_}"] = value_[self.multiplier_map.s_idx[f"slbx_{stage_}"]]
+        for key in self.get_existing_sl(stage_):
+            self.vars.val[key] = value_[self.multiplier_map.s_idx[key]]
+
+        return 0
 
     def set_su(self, stage_, value_):
-        if f"subx_{stage_}" in self.vars.val.keys():
-            self.vars.val[f"subx_{stage_}"] = value_[self.multiplier_map.s_idx[f"subx_{stage_}"]]
+        for key in self.get_existing_su(stage_):
+            self.vars.val[key] = value_[self.multiplier_map.s_idx[key]]
+
+        return 0
+
+    def get_sl(self, stage_):
+        return cs.vertcat(*[self.vars.val[key] for key in self.get_existing_sl(stage_)]).full()
+
+    def get_su(self, stage_):
+        return cs.vertcat(*[self.vars.val[key] for key in self.get_existing_su(stage_)]).full()
 
     def set_pi(self, stage_, value_):
         self.pi.val["pi", stage_] = value_
         return 0
 
     def set_lam(self, stage_, value_):
-        if f"lbu_{stage_}" in self.lam_dict.keys():
-            self.lam_dict[f"lbu_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lbu_{stage_}"]]
-        if f"lbx_{stage_}" in self.lam_dict.keys():
-            self.lam_dict[f"lbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lbx_{stage_}"]]
-        if f"ubu_{stage_}" in self.lam_dict.keys():
-            self.lam_dict[f"ubu_{stage_}"] = value_[self.multiplier_map.lam_idx[f"ubu_{stage_}"]]
-        if f"ubx_{stage_}" in self.lam_dict.keys():
-            self.lam_dict[f"ubx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"ubx_{stage_}"]]
-        if f"lsbx_{stage_}" in self.lam_dict.keys():
-            self.lam_dict[f"lsbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lsbx_{stage_}"]]
-        if f"usbx_{stage_}" in self.lam_dict.keys():
-            self.lam_dict[f"usbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"usbx_{stage_}"]]
+        keys = ["lbu", "lbx", "lh", "ubu", "ubx", "uh", "lsbx", "lsh", "usbx", "ush"]
+        # print(self.multiplier_map.lam_idx.keys())
+        for key in keys:
+            if f"{key}_{stage_}" in self.lam_dict.keys():
+                # print(f"{key}_{stage_}: {self.multiplier_map.lam_idx[f'{key}_{stage_}']}")
+                self.lam_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.lam_idx[f"{key}_{stage_}"]]
+
+        # if f"lbu_{stage_}" in self.lam_dict.keys():
+        #     self.lam_dict[f"lbu_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lbu_{stage_}"]]
+        # if f"lbx_{stage_}" in self.lam_dict.keys():
+        #     self.lam_dict[f"lbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lbx_{stage_}"]]
+        # if f"ubu_{stage_}" in self.lam_dict.keys():
+        #     self.lam_dict[f"ubu_{stage_}"] = value_[self.multiplier_map.lam_idx[f"ubu_{stage_}"]]
+        # if f"ubx_{stage_}" in self.lam_dict.keys():
+        #     self.lam_dict[f"ubx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"ubx_{stage_}"]]
+        # if f"lsbx_{stage_}" in self.lam_dict.keys():
+        #     self.lam_dict[f"lsbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lsbx_{stage_}"]]
+        # if f"usbx_{stage_}" in self.lam_dict.keys():
+        #     self.lam_dict[f"usbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"usbx_{stage_}"]]
 
         return 0
 
@@ -483,30 +541,31 @@ def get_parameter_labels(ocp: AcadosOcp) -> list[str]:
 
 
 def append_inequality_constraint_entries(entries: dict, field: str, labels: list[str], idx: np.ndarray, repeat=None) -> dict:
+    if not len(idx) > 0:
+        return entries
     # if idx:
     sub_labels = [labels[i] for i in idx]
 
     stage = field.split("_")[-1]
 
-    if len(idx) > 0:
-        if repeat:
-            entries["variables"].append(entry(field, repeat=repeat, struct=struct_symSX(sub_labels)))
-            # entries["multipliers"]["lam"].append(
-            #     entry(field, repeat=repeat, struct=struct_symSX([f"lam_{label}" for label in sub_labels]))
-            # )
-        else:
-            entries["variables"].append(entry(field, struct=struct_symSX(sub_labels)))
-            # entries["multipliers"]["lam"].append(entry(field, struct=struct_symSX([f"lam_{label}" for label in sub_labels])))
+    if repeat:
+        entries["variables"].append(entry(field, repeat=repeat, struct=struct_symSX(sub_labels)))
+        # entries["multipliers"]["lam"].append(
+        #     entry(field, repeat=repeat, struct=struct_symSX([f"lam_{label}" for label in sub_labels]))
+        # )
+    else:
+        entries["variables"].append(entry(field, struct=struct_symSX(sub_labels)))
+        # entries["multipliers"]["lam"].append(entry(field, struct=struct_symSX([f"lam_{label}" for label in sub_labels])))
 
-        # Add slacks in addtion to lower/upper constraint
-        if "lsbx" in field:
-            entries["variables"].append(entry(f"slbx_{stage}", struct=struct_symSX(sub_labels)))
-        elif "lsh" in field:
-            entries["variables"].append(entry(f"slh_{stage}", struct=struct_symSX(sub_labels)))
-        elif "usbx" in field:
-            entries["variables"].append(entry(f"subx_{stage}", struct=struct_symSX(sub_labels)))
-        elif "ush" in field:
-            entries["variables"].append(entry(f"suh_{stage}", struct=struct_symSX(sub_labels)))
+    # Add slacks in addtion to lower/upper constraint
+    if "lsbx" in field:
+        entries["variables"].append(entry(f"slbx_{stage}", struct=struct_symSX(sub_labels)))
+    elif "lsh" in field:
+        entries["variables"].append(entry(f"slh_{stage}", struct=struct_symSX(sub_labels)))
+    elif "usbx" in field:
+        entries["variables"].append(entry(f"subx_{stage}", struct=struct_symSX(sub_labels)))
+    elif "ush" in field:
+        entries["variables"].append(entry(f"suh_{stage}", struct=struct_symSX(sub_labels)))
 
     return entries
 
@@ -549,18 +608,22 @@ def append_lbu(stage, h, lam, vars, ocp: AcadosOcp):
     if f"lbu_{stage}" not in vars.keys():
         return h, lam
 
-    h, lam = append_inequality_constraint(
-        f"lbu_{stage}", vars[f"lbu_{stage}"] - vars["u", stage][ocp.constraints.idxbu], h, lam
-    )
+    if stage == 0:
+        idxbu = np.arange(ocp.dims.nu)
+    else:
+        idxbu = ocp.constraints.idxbu
 
-    return h, lam
+    return append_inequality_constraint(f"lbu_{stage}", vars[f"lbu_{stage}"] - vars["u", stage][idxbu], h, lam)
 
 
 def append_lbx(stage, h, lam, vars, ocp: AcadosOcp):
     if f"lbx_{stage}" not in vars.keys():
         return h, lam
 
-    if stage < ocp.dims.N:
+    if stage == 0:
+        idxbx = np.arange(ocp.dims.nx)
+        idxsbx = np.array([])
+    elif 0 < stage < ocp.dims.N:
         idxbx = ocp.constraints.idxbx
         idxsbx = ocp.constraints.idxsbx
     else:
@@ -574,7 +637,6 @@ def append_lbx(stage, h, lam, vars, ocp: AcadosOcp):
         h, lam = append_inequality_constraint(
             f"lbx_{stage}", vars[f"lbx_{stage}"] - Jbx @ vars["x", stage] - Jsbx @ vars[f"slbx_{stage}"], h, lam
         )
-        h, lam = append_inequality_constraint(f"lsbx_{stage}", -vars[f"slbx_{stage}"], h, lam)
     else:
         h, lam = append_inequality_constraint(f"lbx_{stage}", vars[f"lbx_{stage}"] - Jbx @ vars["x", stage], h, lam)
 
@@ -587,18 +649,19 @@ def append_lh(stage, h, lam, vars, ocp: AcadosOcp):
 
     if stage < ocp.dims.N:
         idxsh = ocp.constraints.idxsh
+        h_fun = cs.Function("h", [ocp.model.x, ocp.model.u, ocp.model.p], [ocp.model.con_h_expr])
     else:
         idxsh = ocp.constraints.idxsh_e
+        h_fun = cs.Function("h", [ocp.model.x, ocp.model.u, ocp.model.p], [ocp.model.con_h_expr_e])
+
+    h_val = h_fun(vars["x", stage], vars["u", stage], vars["p"])
 
     if idxsh.shape[0] > 0:
-        Jsh = Jac_idx(idxsh, np.arange(ocp.dims.nh))
-        h, lam = append_inequality_constraint(
-            f"lh_{stage}", vars[f"lh_{stage}"] - Jsh @ vars[f"sh_{stage}"] - vars["h", stage], h, lam
-        )
+        Jsh = Jac_idx(idxsh, ocp.dims.nh)
+        h, lam = append_inequality_constraint(f"lh_{stage}", vars[f"lh_{stage}"] - Jsh @ vars[f"slh_{stage}"] - h_val, h, lam)
 
-        h, lam = append_inequality_constraint(f"lsh_{stage}", -vars[f"sh_{stage}"], h, lam)
     else:
-        h, lam = append_inequality_constraint(f"lh_{stage}", vars[f"lh_{stage}"] - vars["h", stage], h, lam)
+        h, lam = append_inequality_constraint(f"lh_{stage}", vars[f"lh_{stage}"] - h_val, h, lam)
 
     return h, lam
 
@@ -607,18 +670,22 @@ def append_ubu(stage, h, lam, vars, ocp: AcadosOcp):
     if f"ubu_{stage}" not in vars.keys():
         return h, lam
 
-    h, lam = append_inequality_constraint(
-        f"ubu_{stage}", vars["u", stage][ocp.constraints.idxbu] - vars[f"ubu_{stage}"], h, lam
-    )
+    if stage == 0:
+        idxbu = np.arange(ocp.dims.nu)
+    else:
+        idxbu = ocp.constraints.idxbu
 
-    return h, lam
+    return append_inequality_constraint(f"ubu_{stage}", vars["u", stage][idxbu] - vars[f"ubu_{stage}"], h, lam)
 
 
 def append_ubx(stage, h, lam, vars, ocp: AcadosOcp):
     if f"ubx_{stage}" not in vars.keys():
         return h, lam
 
-    if stage < ocp.dims.N:
+    if stage == 0:
+        idxbx = np.arange(ocp.dims.nx)
+        idxsbx = np.array([])
+    elif 0 < stage < ocp.dims.N:
         idxbx = ocp.constraints.idxbx
         idxsbx = ocp.constraints.idxsbx
     else:
@@ -629,14 +696,11 @@ def append_ubx(stage, h, lam, vars, ocp: AcadosOcp):
 
     if idxsbx.shape[0] > 0:
         Jsbx = Jac_idx(idxsbx, idxbx.shape[0])
-        h, lam = append_inequality_constraint(
+        return append_inequality_constraint(
             f"ubx_{stage}", Jbx @ vars["x", stage] - vars[f"ubx_{stage}"] - Jsbx @ vars[f"subx_{stage}"], h, lam
         )
-        h, lam = append_inequality_constraint(f"usbx_{stage}", -vars[f"subx_{stage}"], h, lam)
     else:
-        h, lam = append_inequality_constraint(f"ubx_{stage}", Jbx @ vars["x", stage] - vars[f"ubx_{stage}"], h, lam)
-
-    return h, lam
+        return append_inequality_constraint(f"ubx_{stage}", Jbx @ vars["x", stage] - vars[f"ubx_{stage}"], h, lam)
 
 
 def append_uh(stage, h, lam, vars, ocp: AcadosOcp):
@@ -645,62 +709,70 @@ def append_uh(stage, h, lam, vars, ocp: AcadosOcp):
 
     if stage < ocp.dims.N:
         idxsh = ocp.constraints.idxsh
+        h_fun = cs.Function("h", [ocp.model.x, ocp.model.u, ocp.model.p], [ocp.model.con_h_expr])
     else:
         idxsh = ocp.constraints.idxsh_e
+        h_fun = cs.Function("h", [ocp.model.x, ocp.model.u, ocp.model.p], [ocp.model.con_h_expr_e])
+
+    h_val = h_fun(vars["x", stage], vars["u", stage], vars["p"])
 
     if idxsh.shape[0] > 0:
-        Jsh = Jac_idx(idxsh, np.arange(ocp.dims.nh))
-        h, lam = append_inequality_constraint(
-            f"uh_{stage}", -vars[f"uh_{stage}"] - Jsh @ vars[f"sh_{stage}"] + vars["h", stage], h, lam
-        )
-
-        h, lam = append_inequality_constraint(f"ush_{stage}", -vars[f"sh_{stage}"], h, lam)
+        Jsh = Jac_idx(idxsh, ocp.dims.nh)
+        return append_inequality_constraint(f"uh_{stage}", h_val - vars[f"uh_{stage}"] - Jsh @ vars[f"suh_{stage}"], h, lam)
     else:
-        h, lam = append_inequality_constraint(f"lh_{stage}", vars[f"lh_{stage}"] - vars["h", stage], h, lam)
-
-    return h, lam
+        return append_inequality_constraint(f"uh_{stage}", h_val - vars[f"uh_{stage}"], h, lam)
 
 
-def append_lbx_e(stage, h, lam, vars, ocp: AcadosOcp):
-    if f"lbx_{stage}" not in vars.keys():
+def append_lsbu(stage, h, lam, vars, ocp: AcadosOcp):
+    if f"lsbu_{stage}" not in vars.keys():
         return h, lam
 
-    Jbx = Jac_idx(ocp.constraints.idxbx_e, ocp.dims.nx)
-    # if f"slbx_{stage}" in vars.keys():
-    if ocp.constraints.idxsbx_e.shape[0] > 0:
-        Jsbx = Jac_idx(ocp.constraints.idxsbx_e, ocp.constraints.idxbx_e.shape[0])
-        h, lam = append_inequality_constraint(
-            f"lbx_{stage}", vars[f"lbx_{stage}"] - Jbx @ vars["x", stage] - Jsbx @ vars[f"slbx_{stage}"], h, lam
-        )
-        h, lam = append_inequality_constraint(f"lsbx_{stage}", -vars[f"slbx_{stage}"], h, lam)
-    else:
-        h, lam = append_inequality_constraint(f"lbx_{stage}", vars[f"lbx_{stage}"] - Jbx @ vars["x", stage], h, lam)
 
-    return h, lam
+def append_lsbx(stage, h, lam, vars, ocp: AcadosOcp):
+    if f"lsbx_{stage}" not in vars.keys():
+        return h, lam
+
+    return append_inequality_constraint(f"lsbx_{stage}", -vars[f"slbx_{stage}"], h, lam)
 
 
-def append_ubx_e(stage, h, lam, vars, ocp: AcadosOcp):
-    if f"ubx_{stage}" in vars.keys():
-        Jbx = Jac_idx(ocp.constraints.idxbx_e, ocp.dims.nx)
-        # if f"subx_{stage}" in vars.keys():
-        if ocp.constraints.idxsbx_e.shape[0] > 0:
-            Jsbx = Jac_idx(ocp.constraints.idxsbx_e, ocp.constraints.idxbx_e.shape[0])
-            h, lam = append_inequality_constraint(
-                f"ubx_{stage}", Jbx @ vars["x", stage] - vars[f"ubx_{stage}"] - Jsbx @ vars[f"subx_{stage}"], h, lam
-            )
-            h, lam = append_inequality_constraint(f"usbx_{stage}", -vars[f"subx_{stage}"], h, lam)
-        else:
-            h, lam = append_inequality_constraint(f"ubx_{stage}", Jbx @ vars["x", stage] - vars[f"ubx_{stage}"], h, lam)
+def append_lsh(stage, h, lam, vars, ocp: AcadosOcp):
+    if f"lsh_{stage}" not in vars.keys():
+        return h, lam
+
+    return append_inequality_constraint(f"lsh_{stage}", -vars[f"slh_{stage}"], h, lam)
+
+
+def append_usbu(stage, h, lam, vars, ocp: AcadosOcp):
+    if f"usbu_{stage}" not in vars.keys():
+        return h, lam
+
+
+def append_usbx(stage, h, lam, vars, ocp: AcadosOcp):
+    if f"usbx_{stage}" not in vars.keys():
+        return h, lam
+
+    return append_inequality_constraint(f"usbx_{stage}", -vars[f"subx_{stage}"], h, lam)
+
+
+def append_ush(stage, h, lam, vars, ocp: AcadosOcp):
+    if f"ush_{stage}" not in vars.keys():
+        return h, lam
+
+    return append_inequality_constraint(f"ush_{stage}", -vars[f"suh_{stage}"], h, lam)
 
 
 def append_lbu_0(h, lam, vars, ocp: AcadosOcp):
-    if "lbu_0" in vars.keys():
-        return append_inequality_constraint("lbu_0", vars["lbu_0"] - vars["u", 0], h, lam)
+    if "lbu_0" not in vars.keys():
+        return h, lam
+
+    return append_inequality_constraint("lbu_0", vars["lbu_0"] - vars["u", 0], h, lam)
 
 
 def append_lbx_0(h, lam, vars, ocp: AcadosOcp):
-    if "lbx_0" in vars.keys():
-        return append_inequality_constraint("lbx_0", vars["lbx_0"] - vars["x", 0], h, lam)
+    if "lbx_0" not in vars.keys():
+        return h, lam
+
+    return append_inequality_constraint("lbx_0", vars["lbx_0"] - vars["x", 0], h, lam)
 
 
 def append_ubu_0(h, lam, vars, ocp: AcadosOcp):
@@ -722,9 +794,25 @@ def define_inequality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> tuple[d
 
     h, lam = append_lbx_0(h, lam, vars, ocp)
 
+    h, lam = append_lh(0, h, lam, vars, ocp)
+
     h, lam = append_ubu_0(h, lam, vars, ocp)
 
     h, lam = append_ubx_0(h, lam, vars, ocp)
+
+    h, lam = append_uh(0, h, lam, vars, ocp)
+
+    h, lam = append_lsbu(0, h, lam, vars, ocp)
+
+    h, lam = append_lsbx(0, h, lam, vars, ocp)
+
+    h, lam = append_lsh(0, h, lam, vars, ocp)
+
+    h, lam = append_usbu(0, h, lam, vars, ocp)
+
+    h, lam = append_usbx(0, h, lam, vars, ocp)
+
+    h, lam = append_ush(0, h, lam, vars, ocp)
 
     # Middle stages
     for stage in range(1, ocp.dims.N):
@@ -740,6 +828,18 @@ def define_inequality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> tuple[d
 
         h, lam = append_uh(stage, h, lam, vars, ocp)
 
+        h, lam = append_lsbu(stage, h, lam, vars, ocp)
+
+        h, lam = append_lsbx(stage, h, lam, vars, ocp)
+
+        h, lam = append_lsh(stage, h, lam, vars, ocp)
+
+        h, lam = append_usbu(stage, h, lam, vars, ocp)
+
+        h, lam = append_usbx(stage, h, lam, vars, ocp)
+
+        h, lam = append_ush(stage, h, lam, vars, ocp)
+
     # Last stage
     stage = ocp.dims.N
 
@@ -751,74 +851,15 @@ def define_inequality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> tuple[d
 
     h, lam = append_uh(stage, h, lam, vars, ocp)
 
-    # if "lbu_k" in vars.keys():
-    #     h["lbu_k"] = cs.vertcat(*[vars["lbu_k", stage - 1] - vars["u", stage] for stage in range(1, ocp.dims.N)])
-    # if "lbx_k" in vars.keys():
-    #     h["lbx_k"] = cs.vertcat(*[vars["lbx_k", stage - 1] - vars["x", stage] for stage in range(1, ocp.dims.N)])
-    # if "ubu_k" in vars.keys():
-    #     h["ubu_k"] = cs.vertcat(*[vars["u", stage] - vars["ubu_k", stage - 1] for stage in range(1, ocp.dims.N)])
-    # if "ubx_k" in vars.keys():
-    #     h["ubx_k"] = cs.vertcat(*[vars["x", stage] - vars["ubx_k", stage - 1] for stage in range(1, ocp.dims.N)])
-    # if "lbu_k" in vars.keys():
-    #     h["lbu_k"] = cs.vertcat(*[vars["lbu_k", stage - 1] - vars["u", stage] for stage in range(1, ocp.dims.N)])
-    # if "lbx_k" in vars.keys():
-    #     h["lbx_k"] = cs.vertcat(*[vars["lbx_k", stage - 1] - vars["x", stage] for stage in range(1, ocp.dims.N)])
-    # if "ubu_k" in vars.keys():
-    #     h["ubu_k"] = cs.vertcat(*[vars["u", stage] - vars["ubu_k", stage - 1] for stage in range(1, ocp.dims.N)])
-    # if "ubx_k" in vars.keys():
-    #     h["ubx_k"] = cs.vertcat(*[vars["x", stage] - vars["ubx_k", stage - 1] for stage in range(1, ocp.dims.N)])
+    h, lam = append_lsbx(stage, h, lam, vars, ocp)
 
-    # h_vec = []
-    # h_vec.append(h["lbu_0"])
-    # h_vec.append(h["lbx_0"])
-    # h_vec.append(h["ubu_0"])
-    # h_vec.append(h["ubx_0"])
+    h, lam = append_lsh(stage, h, lam, vars, ocp)
 
-    # temp = cs.horzcat(h["lbu_0"], h["lbx_0"], h["ubu_0"], h["ubx_0"])
-    # temp = cs.vertcat(cs.horzcat(h["lbu_k"], h["lbx_k"], h["ubu_k"], h["ubx_k"]))
-    # temp = temp.reshape(-1, 1)
+    h, lam = append_usbx(stage, h, lam, vars, ocp)
+
+    h, lam = append_ush(stage, h, lam, vars, ocp)
 
     return h, lam
-
-
-def define_inequality_constraints_old(vars: struct_symSX, ocp: AcadosOcp) -> dict:
-    h = list()
-
-    # Initial stage
-    if "lbu_0" in vars.keys():
-        h.append(vars["lbu_0"] - vars["u", 0])
-
-    if "lbx_0" in vars.keys():
-        h.append(vars["lbx_0"] - vars["x", 0])
-
-    if "ubu_0" in vars.keys():
-        h.append(vars["u", 0] - vars["ubu_0"])
-
-    if "ubx_0" in vars.keys():
-        h.append(vars["x", 0] - vars["ubx_0"])
-
-    # Last stage
-    if "lbx_e" in vars.keys():
-        h.append(vars["lbx_e"] - vars["x", ocp.dims.N])
-
-    if "ubx_e" in vars.keys():
-        h.append(vars["x", ocp.dims.N] - vars["ubx_e"])
-
-    # Middle stages
-    # TODO: Need to take idxbx etc into account
-    for stage in range(1, ocp.dims.N):
-        if "lbu_k" in vars.keys():
-            h.append(vars["lbu_k", stage - 1] - vars["u", stage])
-        if "lbx_k" in vars.keys():
-            h.append(vars["lbx_k", stage - 1] - vars["x", stage])
-        if "ubu_k" in vars.keys():
-            h.append(vars["u", stage] - vars["ubu_k", stage - 1])
-        if "ubx_k" in vars.keys():
-            h.append(vars["x", stage] - vars["ubx_k", stage - 1])
-
-    h = cs.vertcat(*h)
-
-    return h
 
 
 def define_equality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> cs.SX:
@@ -862,6 +903,7 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     entries["variables"].append(entry("p", struct=struct_symSX(get_parameter_labels(ocp))))
 
     # Inequality constraints
+    h_labels = [f"h_{i}" for i in range(ocp.constraints.lh.shape[0])]
 
     # Initial stage
 
@@ -874,10 +916,32 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     )
 
     entries = append_inequality_constraint_entries(
+        entries, field="lh_0", labels=h_labels, idx=np.arange(ocp.constraints.lh.shape[0])
+    )
+
+    entries = append_inequality_constraint_entries(
         entries, field="ubu_0", labels=get_input_labels(ocp), idx=np.arange(ocp.dims.nu)
     )
     entries = append_inequality_constraint_entries(
         entries, field="ubx_0", labels=get_state_labels(ocp), idx=ocp.constraints.idxbx_0
+    )
+
+    entries = append_inequality_constraint_entries(
+        entries, field="uh_0", labels=h_labels, idx=np.arange(ocp.constraints.uh.shape[0])
+    )
+
+    entries = append_inequality_constraint_entries(
+        entries,
+        field="lsh_0",
+        labels=[h_labels[i] for i in ocp.constraints.idxsh],
+        idx=ocp.constraints.idxsh,
+    )
+
+    entries = append_inequality_constraint_entries(
+        entries,
+        field="ush_0",
+        labels=[h_labels[i] for i in ocp.constraints.idxsh],
+        idx=ocp.constraints.idxsh,
     )
 
     # Middle stages
@@ -899,7 +963,7 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
         entries = append_inequality_constraint_entries(
             entries,
             field=f"lh_{stage}",
-            labels=[f"h_{i}" for i in range(ocp.constraints.lh.shape[0])],
+            labels=h_labels,
             idx=np.arange(ocp.constraints.lh.shape[0]),
         )
 
@@ -941,7 +1005,7 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
         entries = append_inequality_constraint_entries(
             entries,
             field=f"lsh_{stage}",
-            labels=[f"h_{stage}_{i}" for i in range(ocp.constraints.lh.shape[0])],
+            labels=[h_labels[i] for i in ocp.constraints.idxsh],
             idx=ocp.constraints.idxsh,
         )
 
@@ -962,34 +1026,11 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
         entries = append_inequality_constraint_entries(
             entries,
             field=f"ush_{stage}",
-            labels=[f"h_{stage}_{i}" for i in range(ocp.constraints.uh.shape[0])],
+            labels=[h_labels[i] for i in ocp.constraints.idxsh],
             idx=ocp.constraints.idxsh,
         )
 
     stage = ocp.dims.N
-
-    # ACADOS_MULTIPLIER_ORDER = [
-    #     "lbu",
-    #     "lbx",
-    #     "lg",
-    #     "lh",
-    #     "lphi",
-    #     "ubu",
-    #     "ubx",
-    #     "ug",
-    #     "uh",
-    #     "uphi",
-    #     "lsbu",
-    #     "lsbx",
-    #     "lsg",
-    #     "lsh",
-    #     "lsphi",
-    #     "usbu",
-    #     "usbx",
-    #     "usg",
-    #     "ush",
-    #     "usphi",
-    # ]
 
     entries = append_inequality_constraint_entries(
         entries, field=f"lbx_{stage}", labels=get_state_labels(ocp), idx=ocp.constraints.idxbx_e
@@ -1104,12 +1145,29 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
         cost_function_0 = define_external_cost_function_0(ocp)
 
         cost = 0
-        cost += cost_function_0(vars["x", 0], vars["u", 0], vars["p"])
-        cost += sum([cost_function(vars["x", stage], vars["u", stage], vars["p"]) for stage in range(1, ocp.dims.N)])
-
+        cost += vars["dT", 0] * cost_function_0(vars["x", 0], vars["u", 0], vars["p"])
+        cost += sum(
+            [
+                vars["dT", stage] * cost_function(vars["x", stage], vars["u", stage], vars["p"])
+                for stage in range(1, ocp.dims.N)
+            ]
+        )
         cost += cost_function_e(vars["x", ocp.dims.N], vars["p"])
 
+        # TODO: Add support for mixing relaxed constraints
+        if len(ocp.constraints.idxsh) > 0 and len(ocp.constraints.idxsbx) > 0:
+            raise NotImplementedError(
+                "Not implemented yet. Can either have soft state or soft inequality constraints, not both"
+            )
+
         # Add cost for slack variables
+        if len(ocp.constraints.idxsh) > 0:
+            cost += sum([vars["dT", stage] * vars[f"slh_{stage}"].T @ ocp.cost.zl for stage in range(ocp.dims.N)])
+            cost += sum([vars["dT", stage] * vars[f"suh_{stage}"].T @ ocp.cost.zu for stage in range(ocp.dims.N)])
+
+        if len(ocp.constraints.idxsh_e) > 0:
+            cost += vars[f"slh_{ocp.dims.N}"].T @ ocp.cost.zl_e
+            cost += vars[f"suh_{ocp.dims.N}"].T @ ocp.cost.zu_e
 
         if len(ocp.constraints.idxsbx) > 0:
             cost += sum([vars[f"slbx_{stage}"] @ ocp.cost.zl for stage in range(1, ocp.dims.N)])
@@ -1173,7 +1231,9 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     u = cs.vertcat(*nlp.vars.sym["u", :])
     x = cs.vertcat(*nlp.vars.sym["x", :])
+
     lam = nlp.lam.sym
+
     pi = nlp.pi.sym.cat
 
     w = cs.vertcat(u, x)
@@ -1202,36 +1262,58 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     nlp.dR_dz.sym = cs.jacobian(nlp.R.sym, nlp.z.sym)
     nlp.dR_dz.fun = cs.Function("dR_dz", [nlp.vars.sym, nlp.pi.sym, nlp.lam.sym], [nlp.dR_dz.sym])
 
-    nlp.x.sym = cs.vertcat(*nlp.vars.sym["x", :])
+    nlp.x.sym = cs.horzcat(*nlp.vars.sym["x", :]).T
     nlp.x.fun = cs.Function("x", [nlp.vars.sym], [nlp.x.sym])
 
-    nlp.u.sym = cs.vertcat(*nlp.vars.sym["u", :])
+    nlp.u.sym = cs.horzcat(*nlp.vars.sym["u", :]).T
     nlp.u.fun = cs.Function("u", [nlp.vars.sym], [nlp.u.sym])
 
     # Initial stage
-
     # TODO: This needs checks if the constraints actually exist
     # lbu_0 = np.ones((ocp.dims.nu,)) * ocp.constraints.lbu[0]
-    nlp.set(0, "lbu", ocp.constraints.lbu)
-    nlp.set(0, "lbx", ocp.constraints.lbx_0)
-    nlp.set(0, "ubu", ocp.constraints.ubu)
-    nlp.set(0, "ubx", ocp.constraints.ubx_0)
+    for key, value in {
+        "lbu": ocp.constraints.lbu,
+        "lbx": ocp.constraints.lbx_0,
+        "lh": ocp.constraints.lh,
+        "ubu": ocp.constraints.ubu,
+        "ubx": ocp.constraints.ubx_0,
+        "uh": ocp.constraints.uh,
+    }.items():
+        nlp.set(0, key, value)
 
     # Middle stages
     for stage in range(1, ocp.dims.N):
-        nlp.set(stage, "lbx", ocp.constraints.lbx)
-        nlp.set(stage, "ubx", ocp.constraints.ubx)
-        nlp.set(stage, "lbu", ocp.constraints.lbu)
-        nlp.set(stage, "ubu", ocp.constraints.ubu)
-        nlp.set(stage, "lsbx", ocp.constraints.lsbx)
-        nlp.set(stage, "usbx", ocp.constraints.usbx)
+        for key, value in {
+            "lbu": ocp.constraints.lbu,
+            "lbx": ocp.constraints.lbx,
+            "lh": ocp.constraints.lh,
+            "ubu": ocp.constraints.ubu,
+            "ubx": ocp.constraints.ubx,
+            "uh": ocp.constraints.uh,
+            "lsbx": ocp.constraints.lsbx,
+            "lsh": ocp.constraints.lsh,
+            "usbx": ocp.constraints.usbx,
+            "ush": ocp.constraints.ush,
+        }.items():
+            nlp.set(stage, key, value)
 
     # Final stage
-    stage = ocp.dims.N
-    nlp.set(stage, "lbx", ocp.constraints.lbx_e)
-    nlp.set(stage, "ubx", ocp.constraints.ubx_e)
-    nlp.set(stage, "lsbx", ocp.constraints.lsbx_e)
-    nlp.set(stage, "usbx", ocp.constraints.usbx_e)
+    for key, value in {
+        "lbx": ocp.constraints.lbx_e,
+        "lh": ocp.constraints.lh_e,
+        "ubx": ocp.constraints.ubx_e,
+        "uh": ocp.constraints.uh_e,
+        "lsbx": ocp.constraints.lsbx_e,
+        "lsh": ocp.constraints.lsh_e,
+        "usbx": ocp.constraints.usbx_e,
+        "ush": ocp.constraints.ush_e,
+    }.items():
+        nlp.set(ocp.dims.N, key, value)
+
+    # nlp.set(stage, "lbx", ocp.constraints.lbx_e)
+    # nlp.set(stage, "ubx", ocp.constraints.ubx_e)
+    # nlp.set(stage, "lsbx", ocp.constraints.lsbx_e)
+    # nlp.set(stage, "usbx", ocp.constraints.usbx_e)
 
     # z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam.sym)
 
@@ -1642,17 +1724,30 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
         nlp.set(stage, "pi", ocp_solver.get(stage, "pi"))
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "lam", ocp_solver.get(stage, "lam"))
-    for stage in range(1, ocp_solver.acados_ocp.dims.N + 1):
+    for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "sl", ocp_solver.get(stage, "sl"))
-    for stage in range(1, ocp_solver.acados_ocp.dims.N + 1):
+    for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "su", ocp_solver.get(stage, "su"))
 
     nlp.lam.val = cs.vertcat(*list(nlp.lam_dict.values()))
+
+    # sl = nlp.get_sl(0)
+
+    # print(ocp_solver.get(0, "lam") - nlp.lam.val[:24])
+    # print(ocp_solver.get(1, "lam") - nlp.lam.val[24:44])
 
     # print(nlp.lam_dict["slbx_1"])
 
     nlp.x.val = nlp.x.fun(nlp.vars.val)
     nlp.u.val = nlp.u.fun(nlp.vars.val)
+
+    assert np.allclose(
+        nlp.x.val, np.vstack([ocp_solver.get(stage, "x") for stage in range(ocp_solver.acados_ocp.dims.N + 1)]), atol=1e-6
+    ), "State mismatch between NLP and OCP solver."
+
+    assert np.allclose(
+        nlp.u.val, np.vstack([ocp_solver.get(stage, "u") for stage in range(ocp_solver.acados_ocp.dims.N)]), atol=1e-6
+    ), "Control mismatch between NLP and OCP solver."
 
     nlp.cost.val = nlp.cost.fun(nlp.vars.val)
     nlp.h.val = nlp.h.fun(nlp.vars.val)
@@ -1672,8 +1767,8 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
 
     assert np.allclose(nlp.g.val, 0.0, atol=1e-6), "Equality constraints are not satisfied."
 
-    # if not np.all(nlp.h.val < 1e-10):
-    #     nlp.print_inequality_constraints()
+    if not np.all(nlp.h.val < 1e-6):
+        nlp.print_inequality_constraints()
 
     assert np.all(nlp.h.val < 1e-6), "Inequality constraints are not satisfied."
 
@@ -1697,5 +1792,12 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
 
     assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
+
+    # print(nlp.dL_dx.val[:2])
+
+    # if not np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6):
+    #     print("Stationarity wrt w not satisfied.")
+    #     print(nlp.dL_dx.val[nlp.dL_dx.val != 0.0])
+    #     print("")
 
     return nlp
