@@ -316,24 +316,9 @@ class NLP:
 
     def set_lam(self, stage_, value_):
         keys = ["lbu", "lbx", "lh", "ubu", "ubx", "uh", "lsbx", "lsh", "usbx", "ush"]
-        # print(self.multiplier_map.lam_idx.keys())
         for key in keys:
             if f"{key}_{stage_}" in self.lam_dict.keys():
-                # print(f"{key}_{stage_}: {self.multiplier_map.lam_idx[f'{key}_{stage_}']}")
                 self.lam_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.lam_idx[f"{key}_{stage_}"]]
-
-        # if f"lbu_{stage_}" in self.lam_dict.keys():
-        #     self.lam_dict[f"lbu_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lbu_{stage_}"]]
-        # if f"lbx_{stage_}" in self.lam_dict.keys():
-        #     self.lam_dict[f"lbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lbx_{stage_}"]]
-        # if f"ubu_{stage_}" in self.lam_dict.keys():
-        #     self.lam_dict[f"ubu_{stage_}"] = value_[self.multiplier_map.lam_idx[f"ubu_{stage_}"]]
-        # if f"ubx_{stage_}" in self.lam_dict.keys():
-        #     self.lam_dict[f"ubx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"ubx_{stage_}"]]
-        # if f"lsbx_{stage_}" in self.lam_dict.keys():
-        #     self.lam_dict[f"lsbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"lsbx_{stage_}"]]
-        # if f"usbx_{stage_}" in self.lam_dict.keys():
-        #     self.lam_dict[f"usbx_{stage_}"] = value_[self.multiplier_map.lam_idx[f"usbx_{stage_}"]]
 
         return 0
 
@@ -349,7 +334,6 @@ class NLP:
         elif field_ == "pi":
             return self.pi.val["pi", stage_]
         elif field_ == "lam":
-            # return cs.vertcat(*[self.lam_dict[key] for key in self.lam_dict.keys()])
             raise NotImplementedError("Not implemented yet.")
         else:
             raise Exception(f"Field {field_} not supported.")
@@ -546,16 +530,6 @@ def get_input_labels(ocp: AcadosOcp) -> list[str]:
     return ocp.model.u.str().strip("[]").split(", ")
 
 
-def get_sbx_labels(ocp: AcadosOcp) -> list[str]:
-    print("hallo")
-
-    state_labels = get_state_labels(ocp)
-
-    constraint_labels = [state_labels[idx] for idx in ocp.constraints.idxbx]
-    sbx_labels = [constraint_labels[idx] for idx in ocp.constraints.idxsbx]
-    return sbx_labels
-
-
 def get_parameter_labels(ocp: AcadosOcp) -> list[str]:
     return ocp.model.p.str().strip("[]").split(", ")
 
@@ -563,7 +537,6 @@ def get_parameter_labels(ocp: AcadosOcp) -> list[str]:
 def append_inequality_constraint_entries(entries: dict, field: str, labels: list[str], idx: np.ndarray, repeat=None) -> dict:
     if not len(idx) > 0:
         return entries
-    # if idx:
     sub_labels = [labels[i] for i in idx]
 
     stage = field.split("_")[-1]
@@ -588,33 +561,6 @@ def append_inequality_constraint_entries(entries: dict, field: str, labels: list
         entries["variables"].append(entry(f"suh_{stage}", struct=struct_symSX(sub_labels)))
 
     return entries
-
-
-def is_lower_constraints(field: str) -> bool:
-    return field[0] == "l"
-
-
-def is_upper_constraints(field: str) -> bool:
-    return field[0] == "u"
-
-
-def append_relaxed_inequality_constraint_entries(
-    entries: dict, field: str, labels: list[str], idx: np.ndarray, s_idx: np.ndarray
-) -> dict:
-    # if idx:
-    sub_labels = [labels[i] for i in idx]
-
-    if len(idx) > 0:
-        entries["variables"].append(entry(field, struct=struct_symSX(sub_labels)))
-        entries["multipliers"]["lam"].append(entry(field, struct=struct_symSX([f"lam_{label}" for label in sub_labels])))
-        if is_lower_constraints(field):
-            entries["slacks"]["sl"].append(entry(field, struct=struct_symSX([f"sl_{label}" for label in sub_labels])))
-        elif is_upper_constraints(field):
-            entries["slacks"]["su"].append(entry(field, struct=struct_symSX([f"su_{label}" for label in sub_labels])))
-
-    return entries
-
-    # "lbx_k", repeat=ocp.dims.N - 1, struct=struct_symSX([f"lam_{labels['x'][k]}" for k in ocp.constraints.idxbx])
 
 
 def append_inequality_constraint(key: str, expr, h, lam):
@@ -893,12 +839,6 @@ def define_equality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> cs.SX:
     return g
 
 
-def append_lbx_constraint(h: list, vars: struct_symSX, ocp: AcadosOcp, stage: int) -> list:
-    h.append(vars["lbx_k", stage - 1] - vars["x", stage])
-
-    return h
-
-
 def build_nlp(ocp: AcadosOcp) -> NLP:
     """
     Build the NLP for the OCP.
@@ -1111,8 +1051,6 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     # Equality constraints
     vars = struct_symSX([tuple(entries["variables"])])
 
-    # lam = struct_symSX([tuple(entries["multipliers"]["lam"])])
-
     pi = struct_symSX([tuple(entries["multipliers"]["pi"])])
 
     g = define_equality_constraints(vars, ocp)
@@ -1195,14 +1133,6 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
             cost += vars[f"slbx_{ocp.dims.N}"] @ ocp.cost.zl_e
             cost += vars[f"subx_{ocp.dims.N}"] @ ocp.cost.zu_e
 
-    # nlp.cost.sym = 0
-
-    # nlp.cost.fun = cs.Function("cost", [nlp.w.sym, nlp.dT.sym], [nlp.cost.sym], ["w", "dT"], ["cost"])
-    # nlp.cost.val = 0
-
-    # nlp.dT.val = nlp.dT.sym(0)
-    # nlp.dT.val["dT", lambda x: cs.vertcat(*x)] = np.tile(ocp.solver_options.tf / ocp.dims.N, (1, ocp.dims.N))
-
     nlp.vars.sym = vars
     nlp.vars.val = vars(0)
 
@@ -1211,7 +1141,6 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
             nlp.vars.val[f"lbu_{stage}"] = ocp.constraints.lbu
             nlp.vars.val[f"ubu_{stage}"] = ocp.constraints.ubu
 
-    # vars_val["dT", lambda x: cs.vertcat(*x)] = np.tile(ocp.solver_options.tf / ocp.dims.N, (1, ocp.dims.N))
     for stage in range(ocp.dims.N):
         nlp.vars.val["dT", stage] = ocp.solver_options.tf / ocp.dims.N
 
@@ -1224,19 +1153,11 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     nlp.g.sym = g
     nlp.g.fun = cs.Function("g", [nlp.vars.sym], [nlp.g.sym])
 
-    # nlp.h.sym = cs.vertcat(*list(h.values()))
     nlp.h.fun = cs.Function("h", [nlp.vars.sym], [nlp.h.sym])
-
-    # nlp.lam.sym = lam
-    # nlp.lam.val = lam(0)
-
-    # for i in range(nlp.lam.sym.shape[0]):
-    #     print(f"{nlp.h.sym[i]} * {nlp.lam.sym[i]}")
 
     nlp.pi.sym = pi
     nlp.pi.val = pi(0)
 
-    # nlp.L.sym = nlp.cost.sym + cs.dot(nlp.lam.sym, nlp.h.sym) + cs.dot(nlp.pi.sym, nlp.g.sym)
     nlp.L.sym = nlp.cost.sym + cs.dot(nlp.lam.sym, nlp.h.sym) + cs.dot(nlp.pi.sym, nlp.g.sym)
 
     nlp.L.fun = cs.Function("L", [nlp.vars.sym, nlp.pi.sym, nlp.lam.sym], [nlp.L.sym])
@@ -1328,219 +1249,7 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     }.items():
         nlp.set(ocp.dims.N, key, value)
 
-    # nlp.set(stage, "lbx", ocp.constraints.lbx_e)
-    # nlp.set(stage, "ubx", ocp.constraints.ubx_e)
-    # nlp.set(stage, "lsbx", ocp.constraints.lsbx_e)
-    # nlp.set(stage, "usbx", ocp.constraints.usbx_e)
-
-    # z = cs.vertcat(nlp.w.sym, nlp.pi.sym, nlp.lam.sym)
-
-    # L = nlp.cost.sym + cs.mtimes([nlp.lam.sym.T, nlp.h.sym]) + cs.mtimes([nlp.pi.sym.T, nlp.g.sym])
-
     return nlp
-
-
-def find_nlp_entry_expr_dependencies(nlp: NLP, nlp_entry: str, vars: list[str]) -> tuple[list[cs.SX], list[str]]:
-    """
-    Find dependencies of expr on var.
-    """
-
-    # Loop over a list of attributes in nlp
-    arg_list = []
-    name_list = []
-    for attr in vars:
-        # Check if nlp.dL_dp.sym is function of nlp.attr.sym
-        dL_dp_depends_on_attr = any(cs.which_depends(getattr(nlp, nlp_entry).sym, getattr(nlp, attr).sym))
-        if dL_dp_depends_on_attr:
-            print(f"{nlp_entry} depends on", attr)
-            arg_list.append(getattr(nlp, attr).sym)
-            name_list.append(attr)
-
-    return arg_list, name_list
-
-
-def update_nlp_w(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
-    """
-    Update the primal variables.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    for stage in range(ocp_solver.acados_ocp.dims.N):
-        nlp.w.val["x", stage] = ocp_solver.get(stage, "x")
-        nlp.w.val["u", stage] = ocp_solver.get(stage, "u")
-
-    stage = ocp_solver.acados_ocp.dims.N
-
-    nlp.w.val["x", stage] = ocp_solver.get(stage, "x")
-
-    return nlp
-
-
-def update_nlp_h(nlp: NLP):
-    """
-    Update the inequality constraints.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        h: Updated inequality constraints.
-    """
-
-    return nlp.h.fun(w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val)["h"]
-
-
-def update_nlp_g(nlp: NLP):
-    """
-    Update the equality constraints.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        g: Updated equality constraints.
-    """
-
-    return nlp.g.fun(w=nlp.w.val, p=nlp.p.val)["g"]
-
-
-def update_nlp_pi(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
-    """
-    Update the multipliers associated with the equality constraints.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    for stage in range(ocp_solver.acados_ocp.dims.N):
-        nlp.pi.val["pi", stage] = ocp_solver.get(stage, "pi")
-
-    return nlp
-
-
-def update_nlp_lam(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMultiplierMap) -> NLP:
-    """
-    Update the multipliers associated with the inequality constraints.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-        multiplier_map: Map of multipliers.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    for stage in range(ocp_solver.acados_ocp.dims.N):
-        nlp.lam.val["lbx", stage] = multiplier_map(stage, "lbx", ocp_solver.get(stage, "lam"))
-        nlp.lam.val["ubx", stage] = multiplier_map(stage, "ubx", ocp_solver.get(stage, "lam"))
-        nlp.lam.val["lbu", stage] = multiplier_map(stage, "lbu", ocp_solver.get(stage, "lam"))
-        nlp.lam.val["ubu", stage] = multiplier_map(stage, "ubu", ocp_solver.get(stage, "lam"))
-
-    stage = ocp_solver.acados_ocp.dims.N
-
-    nlp.lam.val["lbx", stage] = multiplier_map(stage, "lbx", ocp_solver.get(stage, "lam"))
-    nlp.lam.val["ubx", stage] = multiplier_map(stage, "ubx", ocp_solver.get(stage, "lam"))
-
-    return nlp
-
-
-def update_nlp_R(nlp: NLP):
-    """
-    Update the KKT matrix R of the NLP.
-
-    Args:
-        nlp: NLP to update.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    return nlp.R.fun(
-        w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val
-    )["R"]
-
-
-def update_nlp_L(nlp: NLP):
-    """
-    Update the Lagrangian of the NLP.
-
-    Args:
-        nlp: NLP to update.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    return nlp.L.fun(
-        w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val
-    )["L"]
-
-
-def update_nlp_dL_dw(nlp: NLP):
-    """
-    Update the sensitivity of the Lagrangian with respect to the primal variables.
-
-    Args:
-        nlp: NLP to update.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-    return nlp.dL_dw.fun(w=nlp.w.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val)["dL_dw"]
-
-
-def update_nlp_dL_dp(nlp: NLP):
-    """
-    Update the sensitivity of the Lagrangian with respect to the parameters.
-
-    Args:
-        nlp: NLP to update.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-    return nlp.dL_dp.fun(w=nlp.w.val, pi=nlp.pi.val, p=nlp.p.val)["dL_dp"]
-
-
-def update_nlp_dR_dz(nlp: NLP):
-    """
-    Update the sensitivity of the KKT matrix with respect to the primal-dual variables.
-
-    Args:
-        nlp: NLP to update.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-    return nlp.dR_dz.fun(
-        w=nlp.w.val, lbw=nlp.lbw.val, ubw=nlp.ubw.val, pi=nlp.pi.val, lam=nlp.lam.val, p=nlp.p.val, dT=nlp.dT.val
-    )["dR_dz"]
-
-
-def update_nlp_dR_dp(nlp: NLP) -> NLP:
-    """
-    Update the sensitivity of the KKT matrix with respect to the parameters.
-
-    Args:
-        nlp: NLP to update.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-    return nlp.dR_dp.fun(w=nlp.w.val, pi=nlp.pi.val, p=nlp.p.val)["dR_dp"]
 
 
 def test_nlp_is_primal_feasible(nlp: NLP, tol: float = 1e-6) -> bool:
@@ -1601,124 +1310,9 @@ def test_nlp_sanity(nlp: NLP, tol: float = 1e-6) -> bool:
     return True
 
 
-def set_nlp_x(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
-    """
-    Update the primal variables.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    for stage in range(ocp_solver.acados_ocp.dims.N + 1):
-        nlp.vars.val["x", stage] = ocp_solver.get(stage, "x")
-
-    # nlp.set(stage, "x") = ocp_solver.get(stage, "x")
-
-    # nlp.vars.val["x", ocp_solver.acados_ocp.dims.N] = ocp_solver.get(ocp_solver.acados_ocp.dims.N, "x")
-
-    return nlp
-
-
-def set_nlp_u(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
-    """
-    Update the primal variables.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    for stage in range(ocp_solver.acados_ocp.dims.N):
-        nlp.vars.val["u", stage] = ocp_solver.get(stage, "u")
-
-    return nlp
-
-
-def set_nlp_pi(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
-    """
-    Update the primal variables.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    for stage in range(ocp_solver.acados_ocp.dims.N):
-        nlp.pi.val["pi", stage] = ocp_solver.get(stage, "pi")
-
-    return nlp
-
-
-def set_nlp_lam(nlp: NLP, ocp_solver: AcadosOcpSolver, multiplier_map: LagrangeMultiplierMap) -> NLP:
-    """
-    Update the primal variables.
-
-    Args:
-        nlp: NLP to update.
-        ocp_solver: OCP solver to get the solution from.
-
-    Returns:
-        nlp: Updated NLP.
-    """
-
-    lam = ocp_solver.get(0, "lam")
-    nlp.lam.val["lbx_0"] = multiplier_map(0, "lbx_0", lam)
-    nlp.lam.val["ubx_0"] = multiplier_map(0, "ubx_0", lam)
-    nlp.lam.val["lbu_0"] = multiplier_map(0, "lbu_0", lam)
-    nlp.lam.val["ubu_0"] = multiplier_map(0, "ubu_0", lam)
-
-    running_index = 10
-    for stage in range(1, ocp_solver.acados_ocp.dims.N):
-        lam = ocp_solver.get(stage, "lam")
-        if len(ocp_solver.acados_ocp.constraints.idxbx) > 0:
-            nlp.lam.val["lbx_k", stage - 1] = multiplier_map(stage, "lbx_k", lam)
-            nlp.lam.val["ubx_k", stage - 1] = multiplier_map(stage, "ubx_k", lam)
-        if len(ocp_solver.acados_ocp.constraints.idxbu) > 0:
-            nlp.lam.val["lbu_k", stage - 1] = multiplier_map(stage, "lbu_k", lam)
-            nlp.lam.val["ubu_k", stage - 1] = multiplier_map(stage, "ubu_k", lam)
-
-        running_index += 2
-
-    # stage = ocp_solver.acados_ocp.dims.N - 1
-    # if len(ocp_solver.acados_ocp.constraints.idxbu) > 0:
-    #     nlp.lam.val["lbu_k", stage - 1] = multiplier_map(stage, "lbu_k", lam)
-    #     nlp.lam.val["ubu_k", stage - 1] = multiplier_map(stage, "ubu_k", lam)
-
-    # stage = ocp_solver.acados_ocp.dims.N - 1
-    # nlp.lam.val["lbx_k", stage - 1] = multiplier_map(stage, "lbx", ocp_solver.get(stage, "lam"))
-    # nlp.lam.val["ubx_k", stage - 1] = multiplier_map(stage, "ubx", ocp_solver.get(stage, "lam"))
-
-    if len(ocp_solver.acados_ocp.constraints.idxbx_e > 0):
-        nlp.lam.val["lbx", stage] = multiplier_map(stage, "lbx", ocp_solver.get(stage, "lam"))
-        nlp.lam.val["ubx", stage] = multiplier_map(stage, "ubx", ocp_solver.get(stage, "lam"))
-
-    return nlp
-
-
 def print_nlp_vars(nlp: NLP):
     for i in range(nlp.vars.val.cat.shape[0]):
         print(f"{nlp.vars.val.cat[i]} <-- {nlp.vars.sym.cat[i]}")
-
-
-# def print_nlp_vars(nlp: NLP):
-#     max_len = max(len(str(val)) for val in nlp.vars.val.cat)
-
-#     for i in range(nlp.vars.val.cat.shape[0]):
-#         val = nlp.vars.val.cat[i]
-#         sym = nlp.vars.sym.cat[i]
-
-#         # Adjust the spacing between val and sym based on the longest val
-#         print(f"{val:<{max_len + 2}}{sym}")
 
 
 def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
@@ -1809,30 +1403,5 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
 
     assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
-
-    # if not np.all(nlp.h.val < 1e-6):
-    #     nlp.print_inequality_constraints()
-
-    # Print complementary slackness where it is not satisfied
-    # for i in range(nlp.lam.val.shape[0]):
-    #     if abs(nlp.h.val[i] * nlp.lam.val[i]) > 1e-6:
-    #         print(
-    #             f"{nlp.h.sym[i]} * {nlp.lam.sym[i]} = {nlp.h.val[i] * nlp.lam.val[i]}; {nlp.h.sym[i]} = {nlp.h.val[i]} ; {nlp.lam.sym[i]} = {nlp.lam.val[i]}"  # noqa: E501
-    #         )
-
-    # if not np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6):
-    #     print("Complete slackness not satisfied.")
-    #     print(nlp.h.val * nlp.lam.val)
-    #     print(nlp.vars.val["lbu_0"])
-    #     print(nlp.vars.val["ubu_0"])
-    #     print(nlp.vars.val["u", 0])
-    #     print("")
-
-    # print(nlp.dL_dx.val[:2])
-
-    # if not np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6):
-    #     print("Stationarity wrt w not satisfied.")
-    #     print(nlp.dL_dx.val[nlp.dL_dx.val != 0.0])
-    #     print("")
 
     return nlp
