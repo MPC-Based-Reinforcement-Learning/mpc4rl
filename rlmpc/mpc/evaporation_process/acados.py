@@ -64,10 +64,22 @@ class AcadosMPC(MPC):
 
     nlp: NLP
 
-    def __init__(self, model_param: dict, cost_param: dict):
+    def __init__(
+        self,
+        model_param: dict,
+        cost_param: dict,
+        x0: np.ndarray = np.array([50.0, 60.0]),
+        u0: np.ndarray = np.array([250.0, 250.0]),
+    ):
         super(AcadosMPC, self).__init__()
 
         self.ocp_solver = setup_acados_ocp_solver(model_param=model_param, cost_param=cost_param)
+
+        # The evaporation process model requires a non-zero initial guess
+        for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+            self.ocp_solver.set(stage, "x", x0)
+        for stage in range(self.ocp_solver.acados_ocp.dims.N):
+            self.ocp_solver.set(stage, "u", u0)
 
         self.nlp = build_nlp(self.ocp_solver.acados_ocp)
 

@@ -305,10 +305,10 @@ class NLP:
         return 0
 
     def get_sl(self, stage_):
-        return cs.vertcat(*[self.vars.val[key] for key in self.get_existing_sl(stage_)]).full()
+        return cs.vertcat(*[self.vars.val[key] for key in self.get_existing_sl(stage_)]).full().flatten()
 
     def get_su(self, stage_):
-        return cs.vertcat(*[self.vars.val[key] for key in self.get_existing_su(stage_)]).full()
+        return cs.vertcat(*[self.vars.val[key] for key in self.get_existing_su(stage_)]).full().flatten()
 
     def set_pi(self, stage_, value_):
         self.pi.val["pi", stage_] = value_
@@ -353,6 +353,9 @@ class NLP:
             raise NotImplementedError("Not implemented yet.")
         else:
             raise Exception(f"Field {field_} not supported.")
+
+    def get_cost(self):
+        return self.cost.val
 
     def get_residuals(self):
         return [
@@ -1116,8 +1119,6 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
 
     assert g.shape[0] == pi.cat.shape[0], "Dimension mismatch between g (equality constraints) and pi (multipliers)"
 
-    print(Jac_idx(ocp.constraints.idxsbx, ocp.constraints.idxbx.shape[0]))
-
     # Inequality constraints
     h_dict, lam_dict = define_inequality_constraints(vars, ocp)
 
@@ -1229,8 +1230,8 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     # nlp.lam.sym = lam
     # nlp.lam.val = lam(0)
 
-    for i in range(nlp.lam.sym.shape[0]):
-        print(f"{nlp.h.sym[i]} * {nlp.lam.sym[i]}")
+    # for i in range(nlp.lam.sym.shape[0]):
+    #     print(f"{nlp.h.sym[i]} * {nlp.lam.sym[i]}")
 
     nlp.pi.sym = pi
     nlp.pi.val = pi(0)

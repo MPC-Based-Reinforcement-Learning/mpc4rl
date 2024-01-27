@@ -197,6 +197,10 @@ class MPC(ABC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
+        if status != 0:
+            raise RuntimeError(f"Solver failed with status {status}. Exiting.")
+            exit(0)
+
         self.update_nlp()
 
         # test_nlp_sanity(self.nlp)
