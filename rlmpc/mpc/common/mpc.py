@@ -39,8 +39,8 @@ class MPC(ABC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        self.nlp.set(0, "lbx", x0)
-        self.nlp.set(0, "ubx", x0)
+        # self.nlp.set(0, "lbx", x0)
+        # self.nlp.set(0, "ubx", x0)
 
         # Solve the optimization problem
         self.status = self.ocp_solver.solve()
@@ -81,6 +81,10 @@ class MPC(ABC):
 
         # Solve the optimization problem
         status = self.ocp_solver.solve()
+
+        if status != 0:
+            raise RuntimeError(f"Solver failed with status {status}. Exiting.")
+            exit(0)
 
         self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
         self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)

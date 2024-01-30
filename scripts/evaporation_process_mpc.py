@@ -9,6 +9,16 @@ from rlmpc.mpc.evaporation_process.acados import AcadosMPC
 def main():
     env = gym.make("EvaporationProcessEnv-v0")
 
+    H_t = np.array(
+        [
+            [6.96 * 1e0, -7.42 * 1e-1, 1.54 * 1e-1, -9.55 * 1e-4, 0.0],
+            [-7.42 * 1e-1, 1.23 * 1e-1, -1.62 * 1e-2, 6.86 * 1e-5, 0.0],
+            [1.54 * 1e-1, -1.62 * 1e-2, 7.93 * 1e-3, -2.10 * 1e-5, 0.0],
+            [-9.55 * 1e-4, 6.86 * 1e-5, -2.10 * 1e-5, 4.53 * 1e-3, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.49 * 1e1],
+        ]
+    )
+
     # p_keys = ["H_lam", "h_lam", "c_lam", "H_Vf", "h_Vf", "c_Vf", "H_l", "h_l", "c_l", "c_f", "x_l", "x_u"]
 
     cost_param = {
@@ -23,33 +33,17 @@ def main():
         "xb": {"x_l": np.array([25.0, 40.0]), "x_u": np.array([100.0, 80.0])},
     }
 
-    model_param = {
-        "a": 0.5616,
-        "b": 0.3126,
-        "c": 48.43,
-        "d": 0.507,
-        "e": 55.0,
-        "f": 0.1538,
-        "g": 55.0,
-        "h": 0.16,
-        "M": 20.0,
-        "C": 4.0,
-        "U_A2": 6.84,
-        "C_p": 0.07,
-        "lam": 38.5,
-        "lam_s": 36.6,
-        "F_1": 10.0,
-        "X_1": 0.05,
-        "F_3": 50.0,
-        "T_1": 40.0,
-        "T_200": 25.0,
-    }
+    model_param = env.param
 
-    mpc = AcadosMPC(model_param=model_param, cost_param=cost_param)
+    # mpc = AcadosMPC(model_param=model_param, cost_param=cost_param)
+    mpc = AcadosMPC(model_param=model_param, H=H_t)
 
     obs, _ = env.reset()
     x0 = obs
-    u0 = np.array([250.0, 250.0])
+    u0 = np.array([250.0, 250.0, 0.0])
+
+    # x0 = np.array([25, 49.743], dtype=np.float32)
+    # u0 = np.array([191.713, 215.888, 0.0])
 
     for stage in range(mpc.ocp_solver.acados_ocp.dims.N + 1):
         mpc.ocp_solver.set(stage, "x", x0)
@@ -62,23 +56,24 @@ def main():
     Su = []
     for i in range(replay_buffer.buffer_size):
         print(f"{i}: {obs}")
-        action = mpc.get_action(obs)
+        action = mpc.get_action(obs)[:2]
+        # action = u0
 
-        mpc.update_nlp()
+        # mpc.update_nlp()
 
-        Sl.append(mpc.ocp_solver.get(0, "sl"))
-        Su.append(mpc.ocp_solver.get(0, "su"))
+        # Sl.append(mpc.ocp_solver.get(0, "sl"))
+        # Su.append(mpc.ocp_solver.get(0, "su"))
         # action = mpc.get_action(obs)
         next_obs, reward, done, _, info = env.step(action.astype(np.float32))
         replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
         obs = next_obs
 
-    Sl = np.vstack(Sl)
-    Su = np.vstack(Su)
+    # Sl = np.vstack(Sl)
+    # Su = np.vstack(Su)
     X = np.vstack([replay_buffer.observations[i].reshape(-1) for i in range(replay_buffer.size())])
     U = np.vstack([replay_buffer.actions[i].reshape(-1) for i in range(replay_buffer.size())])
 
-    bounds_kwargs = {"linestyle": "--", "color": "r"}
+    # bounds_kwargs = {"linestyle": "--", "color": "r"}
 
     # h = np.hstack([cost_param["xb"]["x_l"] - X, X - cost_param["xb"]["x_u"]])
 
@@ -87,7 +82,7 @@ def main():
         plt.subplot(3, 1, i + 1)
         plt.grid()
         plt.plot(X[:, i], label=f"x_{i}")
-        plt.plot(cost_param["xb"]["x_l"][i] * np.ones_like(X[:, i]) - Su[:, i], **bounds_kwargs, label="lower constraint")
+        # plt.plot(cost_param["xb"]["x_l"][i] * np.ones_like(X[:, i]) - Su[:, i], **bounds_kwargs, label="lower constraint")
         plt.legend()
     plt.subplot(3, 1, 3)
     plt.grid()

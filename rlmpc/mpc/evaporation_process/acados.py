@@ -11,6 +11,33 @@ from rlmpc.mpc.nlp import NLP, build_nlp
 from rlmpc.gym.evaporation_process.environment import compute_algebraic_variables
 
 
+def get_value(
+    field: str, x: Union[cs.SX.sym, np.ndarray], u: Union[cs.SX.sym, np.ndarray], model_param: Union[cs.SX.sym, np.ndarray]
+) -> Union[cs.SX.sym, np.ndarray]:
+    if field in model_param.keys():
+        return model_param[field]
+    elif field == "X_2":
+        return x[0]
+    elif field == "P_2":
+        return x[1]
+    elif field == "P_100":
+        return u[0]
+    elif field == "F_200":
+        return u[1]
+
+
+def compute_economic_cost(x: cs.SX.sym, u: cs.SX.sym, model_param: dict) -> cs.SX.sym:
+    algebraic_variables = compute_algebraic_variables(x, u, model_param)
+
+    F_2 = algebraic_variables["F_2"]
+    F_3 = model_param["F_3"]
+    F_100 = algebraic_variables["F_100"]
+    F_200 = u[1]
+    s = u[2]
+
+    return 10.09 * (F_2 + F_3) + 600.0 * F_100 + 0.6 * F_200 + 1.0e3 * s
+
+
 def get_parameter_labels(p: cs.SX.sym) -> list[str]:
     return p.str().strip("[]").split(", ")
 
@@ -66,14 +93,21 @@ class AcadosMPC(MPC):
 
     def __init__(
         self,
-        model_param: dict,
-        cost_param: dict,
+        model_param: dict = None,
+        cost_param: dict = None,
         x0: np.ndarray = np.array([50.0, 60.0]),
-        u0: np.ndarray = np.array([250.0, 250.0]),
+        u0: np.ndarray = np.array([250.0, 250.0, 0.0]),
+        gamma: float = 0.99,
+        H: np.ndarray = None,
     ):
         super(AcadosMPC, self).__init__()
 
-        self.ocp_solver = setup_acados_ocp_solver(model_param=model_param, cost_param=cost_param)
+        if cost_param:
+            self.ocp_solver = setup_acados_ocp_solver(model_param=model_param, cost_param=cost_param, gamma=gamma)
+        elif H is not None:
+            self.ocp_solver = setup_acados_ocp_solver_from_H(model_param=model_param, H=H, gamma=gamma)
+        else:
+            raise RuntimeError("Either cost_param or H must be provided.")
 
         # The evaporation process model requires a non-zero initial guess
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
@@ -81,20 +115,157 @@ class AcadosMPC(MPC):
         for stage in range(self.ocp_solver.acados_ocp.dims.N):
             self.ocp_solver.set(stage, "u", u0)
 
-        self.nlp = build_nlp(self.ocp_solver.acados_ocp)
+        # self.nlp = build_nlp(self.ocp_solver.acados_ocp)
+
+        self.u0 = u0
+
+    def get_action(self, x0: np.ndarray) -> np.ndarray:
+        action = super().get_action(x0)
+
+        if self.ocp_solver.status != 0:
+            raise RuntimeError(f"Solver failed with status {self.ocp_solver.status}. Exiting.")
+            exit(0)
+
+        # self.update_nlp()
+
+        return action
+
+    def reset(self, x0: np.ndarray):
+        super().reset(x0)
+
+        for stage in range(self.ocp_solver.acados_ocp.dims.N):
+            self.ocp_solver.set(stage, "u", self.u0)
 
 
 def quadratic_function(H: cs.SX.sym, h: cs.SX.sym, c: cs.SX.sym, x: cs.SX.sym) -> cs.SX.sym:
     return 0.5 * cs.mtimes([x.T, H, x]) + cs.mtimes([h.T, x]) + c
 
 
-def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]]) -> AcadosOcpSolver:
+def Diag(A: Union[np.ndarray, cs.SX.sym]):
+    assert A.shape[0] == A.shape[1], "A must be square"
+
+    for i in range(A.shape[0]):
+        for j in range(A.shape[1]):
+            if i != j:
+                A[i, j] = 0.0
+
+    return A
+
+
+def setup_acados_ocp_solver_from_H(model_param: dict, H: np.ndarray, gamma: float = 0.99) -> AcadosOcpSolver:
     ocp = AcadosOcp()
     ocp.dims.nx = 2
     ocp.dims.nu = 2
-    ocp.dims.N = 20
+    ocp.dims.N = 10
 
     ocp.solver_options.tf = 10.0
+    ocp.solver_options.Tsim = ocp.solver_options.tf / ocp.dims.N
+
+    ocp.model.name = "evaporation_process"
+
+    ocp.model.x = cs.vertcat(*[cs.SX.sym("X_2"), cs.SX.sym("P_2")])
+    ocp.model.xdot = cs.vertcat(*[cs.SX.sym("X_2_dot"), cs.SX.sym("P_2_dot")])
+    ocp.model.u = cs.vertcat(*[cs.SX.sym("P_100"), cs.SX.sym("F_200"), cs.SX.sym("s")])
+
+    x_ss = np.array([25, 49.743])
+    u_ss = np.array([191.713, 215.888, 0.0])
+
+    w = cs.vertcat(*[ocp.model.x, ocp.model.u])
+    w_ss = cs.vertcat(*[x_ss, u_ss])
+
+    if True:
+        economic_cost = compute_economic_cost(ocp.model.x, ocp.model.u, model_param)
+
+        fun = dict()
+        fun["jac_economic_cost"] = cs.Function("jac_economic_cost", [w], [cs.jacobian(economic_cost, w).T])
+
+        # grad_economic_cost_ss = cs.reshape(fun["jac_economic_cost"](w_ss), -1, 1)
+        grad_economic_cost_ss = fun["jac_economic_cost"](w_ss)
+
+        # grad_economic_cost_ss = np.ones(grad_economic_cost_ss.shape)
+
+        ocp.cost.cost_type_0 = "EXTERNAL"
+        ocp.model.cost_expr_ext_cost_0 = quadratic_function(H, 0.0 * grad_economic_cost_ss, 0.0, w - w_ss)
+        # ocp.model.cost_expr_ext_cost_0 = quadratic_function(H, grad_economic_cost_ss, 0.0, w)
+
+        ocp.cost.cost_type = "EXTERNAL"
+        ocp.model.cost_expr_ext_cost = quadratic_function(H, 0.0 * grad_economic_cost_ss, 0.0, w - w_ss)
+
+        ocp.cost.cost_type_e = "EXTERNAL"
+        ocp.model.cost_expr_ext_cost_e = quadratic_function(
+            H[:2, :2], 0.0 * grad_economic_cost_ss[:2], 0.0, ocp.model.x - x_ss
+        )
+
+    else:
+        ocp.cost.cost_type_0 = "NONLINEAR_LS"
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
+        ocp.model.cost_y_expr_0 = w
+        ocp.model.cost_y_expr = w
+        ocp.model.cost_y_expr_e = ocp.model.x
+        ocp.cost.yref_0 = w_ss.full().flatten()
+        ocp.cost.yref = w_ss.full().flatten()
+        ocp.cost.yref_e = x_ss
+        ocp.cost.W_0 = H
+        ocp.cost.W = H
+        ocp.cost.W_e = H[:2, :2]
+
+        ocp.dims.ny_0 = 5
+        ocp.dims.ny = 5
+        ocp.dims.ny_e = 2
+
+    algebraic_variables = compute_algebraic_variables(ocp.model.x, ocp.model.u, model_param)
+
+    ocp.model.f_expl_expr = cs.vertcat(
+        (model_param["F_1"] * model_param["X_1"] - algebraic_variables["F_2"] * ocp.model.x[0]) / model_param["M"],
+        (algebraic_variables["F_4"] - algebraic_variables["F_5"]) / model_param["C"],
+    )
+
+    ocp.model.f_impl_expr = ocp.model.xdot - ocp.model.f_expl_expr
+    ocp.model.disc_dyn_expr = erk4_discrete_dynamics(ocp)
+
+    ocp.constraints.idxbx_0 = np.array([0, 1])
+    ocp.constraints.lbx_0 = np.array([50.0, 60.0])
+    ocp.constraints.ubx_0 = np.array([50.0, 60.0])
+
+    ocp.constraints.idxbu = np.array([0, 1, 2])
+    ocp.constraints.lbu = np.array([100.0, 100.0, 0.0])
+    ocp.constraints.ubu = np.array([400.0, 400.0, 1000.0])
+
+    xb = {"x_l": 25.0}
+    ocp.model.con_h_expr = cs.vertcat(xb["x_l"] - ocp.model.x[0] - ocp.model.u[2])
+    ocp.constraints.lh = np.array([-1e2] * ocp.model.con_h_expr.shape[0])
+    ocp.constraints.uh = np.array([0] * ocp.model.con_h_expr.shape[0])
+    ocp.dims.nh = ocp.model.con_h_expr.shape[0]
+
+    # ocp.constraints.idxbx_e = np.array([0, 1])
+    # ocp.constraints.lbx_e = x_ss
+    # ocp.constraints.ubx_e = x_ss
+
+    # ocp.constraints.idxsbx_e = np.array([0, 1])
+    # ocp.cost.zl_e = np.array([1000, 1000])
+    # ocp.cost.Zl_e = np.diag([1000, 1000])
+    # ocp.cost.zu_e = np.array([1000, 1000])
+    # ocp.cost.Zu_e = np.diag([1000, 1000])
+
+    ocp.solver_options.integrator_type = "DISCRETE"
+    # ocp.solver_options.integrator_type = "ERK"
+    ocp.solver_options.nlp_solver_type = "SQP"
+    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+    ocp.solver_options.hessian_approx = "EXACT"
+
+    ocp_solver = AcadosOcpSolver(ocp)
+
+    return ocp_solver
+
+
+def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]], gamma: float = 0.99) -> AcadosOcpSolver:
+    ocp = AcadosOcp()
+    ocp.dims.nx = 2
+    ocp.dims.nu = 2
+    ocp.dims.N = 200
+
+    ocp.solver_options.tf = 200.0
     ocp.solver_options.Tsim = ocp.solver_options.tf / ocp.dims.N
     # ocp.solver_options.shooting_nodes = np.array([ocp.solver_options.tf / ocp.dims.N] * (ocp.dims.N + 1))
 
