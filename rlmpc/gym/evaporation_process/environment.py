@@ -2,6 +2,28 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, Union
 
+PARAM = {
+    "a": 0.5616,
+    "b": 0.3126,
+    "c": 48.43,
+    "d": 0.507,
+    "e": 55.0,
+    "f": 0.1538,
+    "g": 90.0,
+    "h": 0.16,
+    "M": 20.0,
+    "C": 4.0,
+    "U_A2": 6.84,
+    "C_p": 0.07,
+    "lam": 38.5,
+    "lam_s": 36.6,
+    "F_1": 10.0,
+    "X_1": 5.0,
+    "F_3": 50.0,
+    "T_1": 40.0,
+    "T_200": 25.0,
+}
+
 
 def erk4_step(f, x, u, p, h):
     k1 = f(x, u, p)
@@ -78,6 +100,8 @@ def compute_data(x: np.ndarray, u: np.ndarray, p: dict[float], stochastic=False)
         "T_200": T_200,
         "M": p["M"],
         "C": p["C"],
+        "F_2": F_2,
+        "F_3": p["F_3"],
     }
 
     return variables
@@ -86,31 +110,11 @@ def compute_data(x: np.ndarray, u: np.ndarray, p: dict[float], stochastic=False)
 class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
     def __init__(
         self,
-        min_action: np.ndarray = np.array([100.0, 100.0]),
-        max_action: np.ndarray = np.array([400, 400]),
-        min_observation: np.ndarray = np.array([25, 40]),
-        max_observation: np.ndarray = np.array([100, 80]),
-        param: dict[float] = {
-            "a": 0.5616,
-            "b": 0.3126,
-            "c": 48.43,
-            "d": 0.507,
-            "e": 55.0,
-            "f": 0.1538,
-            "g": 90.0,
-            "h": 0.16,
-            "M": 20.0,
-            "C": 4.0,
-            "U_A2": 6.84,
-            "C_p": 0.07,
-            "lam": 38.5,
-            "lam_s": 36.6,
-            "F_1": 10.0,
-            "X_1": 5.0,
-            "F_3": 50.0,
-            "T_1": 40.0,
-            "T_200": 25.0,
-        },
+        min_action: np.ndarray = np.array([100.0, 100.0, 0.0]),
+        max_action: np.ndarray = np.array([400, 400, 10.0]),
+        min_observation: np.ndarray = np.array([0.0, 0.0]),
+        max_observation: np.ndarray = np.array([200.0, 160.0]),
+        param: dict[float] = PARAM,
         step_size: float = 1e0,
     ):
         self.step_size = step_size
@@ -134,8 +138,7 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         self.state = erk4_step(compute_f_expl, self.state, action, self.data, self.step_size)
         # print("self.state:", self.state)
 
-        # reward = self._reward_fn(self.state, action)
-        reward = 0
+        reward = self._reward_fn(self.state, action, self.data)
 
         return np.array(self.state, dtype=np.float32), reward, False, False, {}
 
@@ -147,22 +150,18 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
     ):
         super().reset(seed=seed)
 
-        # self.state = np.array([25, 49.743], dtype=np.float32)
-        self.state = np.array([40, 60.0], dtype=np.float32)
+        self.state = np.array([25, 49.743], dtype=np.float32)
+        # self.state = np.array([40, 60.0], dtype=np.float32)
 
         return self.state, {}
 
-    def _reward_fn(self, state, action):
-        algebraic_variables = compute_data(state, action, self.param)
-
-        self.data = algebraic_variables
-
-        F_2 = algebraic_variables["F_2"]
-        F_3 = self.param["F_3"]
-        F_100 = algebraic_variables["F_100"]
+    def _reward_fn(self, state, action, data):
+        F_2 = data["F_2"]
+        F_3 = data["F_3"]
+        F_100 = data["F_100"]
         F_200 = action[1]
 
-        return 10.09 * (F_2 + F_3) + 600.0 * F_100 + 0.6 * F_200
+        return 10.09 * (F_2 + F_3) + 600.0 * F_100 + 0.6 * F_200 + 1.0 * action[2]
 
     def get(self, key):
         if key in self.data.keys():

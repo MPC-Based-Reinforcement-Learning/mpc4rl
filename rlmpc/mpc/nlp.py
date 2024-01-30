@@ -1113,7 +1113,7 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
         # TODO: Add support for mixing relaxed constraints
         if len(ocp.constraints.idxsh) > 0 and len(ocp.constraints.idxsbx) > 0:
             raise NotImplementedError(
-                "Not implemented yet. Can either have soft state or soft inequality constraints, not both"
+                "Not implemented yet. Can either have soft state or soft nonlinear inequality constraints, not both"
             )
 
         # Add cost for slack variables

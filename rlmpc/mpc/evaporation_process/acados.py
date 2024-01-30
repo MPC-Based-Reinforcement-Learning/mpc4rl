@@ -130,11 +130,16 @@ class AcadosMPC(MPC):
 
         return action
 
-    def reset(self, x0: np.ndarray):
-        super().reset(x0)
+    def reset(self):
+        # super().reset(x0)
 
+        x_ss = np.array([25, 49.743])
+        u_ss = np.array([191.713, 215.888, 0.0])
+        # The evaporation process model requires a non-zero initial guess
+        for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+            self.ocp_solver.set(stage, "x", x_ss)
         for stage in range(self.ocp_solver.acados_ocp.dims.N):
-            self.ocp_solver.set(stage, "u", self.u0)
+            self.ocp_solver.set(stage, "u", u_ss)
 
 
 def quadratic_function(H: cs.SX.sym, h: cs.SX.sym, c: cs.SX.sym, x: cs.SX.sym) -> cs.SX.sym:
@@ -173,7 +178,7 @@ def setup_acados_ocp_solver_from_H(model_param: dict, H: np.ndarray, gamma: floa
     w = cs.vertcat(*[ocp.model.x, ocp.model.u])
     w_ss = cs.vertcat(*[x_ss, u_ss])
 
-    if True:
+    if False:
         economic_cost = compute_economic_cost(ocp.model.x, ocp.model.u, model_param)
 
         fun = dict()
@@ -253,6 +258,7 @@ def setup_acados_ocp_solver_from_H(model_param: dict, H: np.ndarray, gamma: floa
     ocp.solver_options.nlp_solver_type = "SQP"
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.hessian_approx = "EXACT"
+    ocp.solver_options.nlp_solver_max_iter = 1000
 
     ocp_solver = AcadosOcpSolver(ocp)
 
@@ -262,10 +268,12 @@ def setup_acados_ocp_solver_from_H(model_param: dict, H: np.ndarray, gamma: floa
 def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]], gamma: float = 0.99) -> AcadosOcpSolver:
     ocp = AcadosOcp()
     ocp.dims.nx = 2
-    ocp.dims.nu = 2
-    ocp.dims.N = 200
+    ocp.dims.nu = 3
+    ocp.dims.N = 20
 
-    ocp.solver_options.tf = 200.0
+    dT = 1
+
+    ocp.solver_options.tf = float(ocp.dims.N * dT)
     ocp.solver_options.Tsim = ocp.solver_options.tf / ocp.dims.N
     # ocp.solver_options.shooting_nodes = np.array([ocp.solver_options.tf / ocp.dims.N] * (ocp.dims.N + 1))
 
@@ -273,7 +281,13 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
 
     ocp.model.x = cs.vertcat(*[cs.SX.sym("X_2"), cs.SX.sym("P_2")])
     ocp.model.xdot = cs.vertcat(*[cs.SX.sym("X_2_dot"), cs.SX.sym("P_2_dot")])
-    ocp.model.u = cs.vertcat(*[cs.SX.sym("P_100"), cs.SX.sym("F_200")])
+    ocp.model.u = cs.vertcat(*[cs.SX.sym("P_100"), cs.SX.sym("F_200"), cs.SX.sym("s")])
+
+    x_ss = np.array([25, 49.743])
+    u_ss = np.array([191.713, 215.888, 0.0])
+
+    w = cs.vertcat(*[ocp.model.x, ocp.model.u])
+    w_ss = cs.vertcat(*[x_ss, u_ss])
 
     # p_vals = list(param.values())
     # p_keys = list(param.keys())
@@ -299,15 +313,16 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
         "f": cs.SX.sym("c_f"),
     }
 
-    for key in ["lam", "l", "Vf"]:
-        print(H[key].shape)
-        print(cost_param["H"][key].shape)
-    for key in h.keys():
-        print(key)
-        print(h[key].shape)
-        print(cost_param["h"][key].shape)
+    # for key in ["lam", "l", "Vf"]:
+    #     print(H[key].shape)
+    #     print(cost_param["H"][key].shape)
+    # for key in h.keys():
+    #     print(key)
+    #     print(h[key].shape)
+    #     print(cost_param["h"][key].shape)
 
     xb = {"x_l": cs.SX.sym("x_l", ocp.dims.nx), "x_u": cs.SX.sym("x_u", ocp.dims.nx)}
+    # xb = {"x_l": cs.SX.sym("x_l", ocp.dims.nx)}
 
     # nlp_param = {"H": H, "h": h, "c": c, "xb": xb}
 
@@ -321,23 +336,46 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
         ]
     ).full()
 
-    if True:
+    x_ss = np.array([25, 49.743])
+    u_ss = np.array([191.713, 215.888, 0.0])
+
+    if False:
         ocp.cost.cost_type_0 = "EXTERNAL"
-        ocp.model.cost_expr_ext_cost_0 = quadratic_function(H["lam"], h["lam"], c["lam"], ocp.model.x) + quadratic_function(
-            H["l"], h["l"], c["l"], cs.vertcat(ocp.model.x, ocp.model.u)
-        )
+        ocp.model.cost_expr_ext_cost_0 = quadratic_function(
+            H["lam"], h["lam"], c["lam"], ocp.model.x - x_ss
+        ) + quadratic_function(H["l"], h["l"], c["l"], cs.vertcat(ocp.model.x - x_ss, ocp.model.u - u_ss))
         ocp.cost.cost_type = "EXTERNAL"
-        ocp.model.cost_expr_ext_cost = quadratic_function(H["l"], h["l"], c["l"], cs.vertcat(ocp.model.x, ocp.model.u))
+        ocp.model.cost_expr_ext_cost = quadratic_function(
+            H["l"], h["l"], c["l"], cs.vertcat(ocp.model.x - x_ss, ocp.model.u - u_ss)
+        )
 
         ocp.cost.cost_type_e = "EXTERNAL"
-        ocp.model.cost_expr_ext_cost_e = quadratic_function(H["Vf"], h["Vf"], c["Vf"], ocp.model.x)
+        ocp.model.cost_expr_ext_cost_e = quadratic_function(H["Vf"], h["Vf"], c["Vf"], ocp.model.x - x_ss)
+    else:
+        ocp.cost.cost_type_0 = "NONLINEAR_LS"
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
+        ocp.model.cost_y_expr_0 = w
+        ocp.model.cost_y_expr = w
+        ocp.model.cost_y_expr_e = ocp.model.x
+        ocp.cost.yref_0 = w_ss.full().flatten()
+        ocp.cost.yref = w_ss.full().flatten()
+        ocp.cost.yref_e = x_ss
+        ocp.cost.W_0 = cost_param["H"]["l"]
+        ocp.cost.W = cost_param["H"]["l"]
+        ocp.cost.W_e = cost_param["H"]["Vf"]
+
+        ocp.dims.ny_0 = 5
+        ocp.dims.ny = 5
+        ocp.dims.ny_e = 2
 
         # Constant intervals for all shooting nodes
 
     algebraic_variables = compute_data(ocp.model.x, ocp.model.u, model_param)
 
+    X_2 = ocp.model.x[0]
     ocp.model.f_expl_expr = cs.vertcat(
-        (model_param["F_1"] * model_param["X_1"] - algebraic_variables["F_5"] * ocp.model.x[0]) / model_param["M"],
+        (model_param["F_1"] * model_param["X_1"] - algebraic_variables["F_2"] * X_2) / model_param["M"],
         (algebraic_variables["F_4"] - algebraic_variables["F_5"]) / model_param["C"],
     )
 
@@ -359,9 +397,9 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
     ocp.constraints.lbx_0 = np.array([50.0, 60.0])
     ocp.constraints.ubx_0 = np.array([50.0, 60.0])
 
-    ocp.constraints.idxbu = np.array([0, 1])
-    ocp.constraints.lbu = np.array([100.0, 100.0])
-    ocp.constraints.ubu = np.array([400.0, 400.0])
+    ocp.constraints.idxbu = np.array([0, 1, 2])
+    ocp.constraints.lbu = np.array([100.0, 100.0, 0.0])
+    ocp.constraints.ubu = np.array([400.0, 400.0, 10.0])
 
     if False:
         print("")
@@ -375,32 +413,32 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
         ocp.cost.Zu = np.diag([0, 0])
     else:
         if True:
-            ocp.model.con_h_expr = cs.vertcat(xb["x_l"] - ocp.model.x, ocp.model.x - xb["x_u"])
-            # ocp.model.con_h_expr = cs.vertcat(xb["x_l"] - ocp.model.x)
+            # ocp.model.con_h_expr = cs.vertcat(xb["x_l"] - ocp.model.x, ocp.model.x - xb["x_u"])
+            ocp.model.con_h_expr = cs.vertcat(xb["x_l"] - ocp.model.x - ocp.model.u[2])
             # ocp.model.con_h_expr = cs.vertcat(ocp.model.x - xb["x_u"])
             # ocp.model.con_h_expr_e = ocp.model.con_h_expr
 
-            ocp.constraints.lh = np.array([-1e6] * ocp.model.con_h_expr.shape[0])
+            ocp.constraints.lh = np.array([-1e2] * ocp.model.con_h_expr.shape[0])
             ocp.constraints.uh = np.array([0] * ocp.model.con_h_expr.shape[0])
             # ocp.constraints.lh_e = ocp.constraints.lh
             # ocp.constraints.uh_e = ocp.constraints.uh
 
             ocp.dims.nh = ocp.model.con_h_expr.shape[0]
 
-            ocp.constraints.idxsh = np.arange(ocp.dims.nh)
+            # ocp.constraints.idxsh = np.arange(ocp.dims.nh)
             # ocp.constraints.idxsh_e = np.arange(ocp.dims.nh_e)
-            ocp.cost.zl = np.ones(ocp.dims.nh)
-            ocp.cost.Zl = np.diag([0] * ocp.dims.nh)
+            # ocp.cost.zl = np.ones(ocp.dims.nh)
+            # ocp.cost.Zl = np.diag([0] * ocp.dims.nh)
             # ocp.cost.zl_e = np.ones(ocp.dims.nh_e)
             # ocp.cost.Zl_e = np.diag([0] * ocp.dims.nh_e)
-            ocp.cost.zu = np.ones(ocp.dims.nh)
-            ocp.cost.Zu = np.diag([0] * ocp.dims.nh)
+            # ocp.cost.zu = np.ones(ocp.dims.nh)
+            # ocp.cost.Zu = np.diag([0] * ocp.dims.nh)
             # ocp.cost.zu_e = np.ones(ocp.dims.nh_e)
             # ocp.cost.Zu_e = np.diag([0] * ocp.dims.nh_e)
 
-            ocp.dims.nsh = ocp.dims.nh
+            # ocp.dims.nsh = ocp.dims.nh
             # ocp.dims.nsh_e = ocp.dims.nh_e
-            ocp.dims.ns = ocp.dims.nsh
+            # ocp.dims.ns = ocp.dims.nsh
 
     if False:
         ocp.model.con_h_expr = cs.vertcat(xb["x_l"] - ocp.model.x, ocp.model.x - xb["x_u"])
