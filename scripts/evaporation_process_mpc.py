@@ -9,15 +9,31 @@ from rlmpc.mpc.evaporation_process.acados import AcadosMPC
 def main():
     env = gym.make("EvaporationProcessEnv-v0")
 
-    H_t = np.array(
+    # H_t = np.array(
+    #     [
+    #         [6.96 * 1e0, -7.42 * 1e-1, 1.54 * 1e-1, -9.55 * 1e-4, 0.0],
+    #         [-7.42 * 1e-1, 1.23 * 1e-1, -1.62 * 1e-2, 6.86 * 1e-5, 0.0],
+    #         [1.54 * 1e-1, -1.62 * 1e-2, 7.93 * 1e-3, -2.10 * 1e-5, 0.0],
+    #         [-9.55 * 1e-4, 6.86 * 1e-5, -2.10 * 1e-5, 4.53 * 1e-3, 0.0],
+    #         [0.0, 0.0, 0.0, 0.0, 1.49 * 1e1],
+    #     ]
+    # )
+
+    H = np.array(
         [
-            [6.96 * 1e0, -7.42 * 1e-1, 1.54 * 1e-1, -9.55 * 1e-4, 0.0],
-            [-7.42 * 1e-1, 1.23 * 1e-1, -1.62 * 1e-2, 6.86 * 1e-5, 0.0],
-            [1.54 * 1e-1, -1.62 * 1e-2, 7.93 * 1e-3, -2.10 * 1e-5, 0.0],
-            [-9.55 * 1e-4, 6.86 * 1e-5, -2.10 * 1e-5, 4.53 * 1e-3, 0.0],
+            [1.50256940e-02, -9.07789284e-03, 3.90839146e-04, -4.31561484e-05, 0.0],
+            [-9.07789284e-03, 1.09796920e-02, -2.12424161e-04, -4.87237154e-03, 0.0],
+            [3.90839146e-04, -2.12424161e-04, 9.27472116e-05, -2.38869483e-05, 0.0],
+            [-4.31561484e-05, -4.87237154e-03, -2.38869483e-05, 4.54066990e-03, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.49 * 1e1],
         ]
     )
+
+    # cost_param = {
+    #     "H": {"lam": H[:2, :2], "l": H,
+    # }
+
+    # q = np.array([60.29, 0.0, 0.0, 0.0])
 
     # p_keys = ["H_lam", "h_lam", "c_lam", "H_Vf", "h_Vf", "c_Vf", "H_l", "h_l", "c_l", "c_f", "x_l", "x_u"]
 
@@ -36,7 +52,7 @@ def main():
     model_param = env.param
 
     # mpc = AcadosMPC(model_param=model_param, cost_param=cost_param)
-    mpc = AcadosMPC(model_param=model_param, H=H_t)
+    mpc = AcadosMPC(model_param=model_param, H=H)
 
     obs, _ = env.reset()
     x0 = obs
@@ -55,7 +71,7 @@ def main():
     Sl = []
     Su = []
     for i in range(replay_buffer.buffer_size):
-        print(f"{i}: {obs}")
+        # print(f"{i}: {obs} , X_1 = {env.data['X_1']}")
         action = mpc.get_action(obs)[:2]
         # action = u0
 
@@ -67,6 +83,8 @@ def main():
         next_obs, reward, done, _, info = env.step(action.astype(np.float32))
         replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
         obs = next_obs
+
+        print(f"{i}: {obs} , X_1 = {env.data['X_1']}")
 
     # Sl = np.vstack(Sl)
     # Su = np.vstack(Su)

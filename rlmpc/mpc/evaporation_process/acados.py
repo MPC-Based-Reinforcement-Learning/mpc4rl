@@ -8,7 +8,7 @@ from rlmpc.mpc.common.mpc import MPC
 
 from rlmpc.mpc.nlp import NLP, build_nlp
 
-from rlmpc.gym.evaporation_process.environment import compute_algebraic_variables
+from rlmpc.gym.evaporation_process.environment import compute_data
 
 
 def get_value(
@@ -27,7 +27,7 @@ def get_value(
 
 
 def compute_economic_cost(x: cs.SX.sym, u: cs.SX.sym, model_param: dict) -> cs.SX.sym:
-    algebraic_variables = compute_algebraic_variables(x, u, model_param)
+    algebraic_variables = compute_data(x, u, model_param)
 
     F_2 = algebraic_variables["F_2"]
     F_3 = model_param["F_3"]
@@ -180,21 +180,20 @@ def setup_acados_ocp_solver_from_H(model_param: dict, H: np.ndarray, gamma: floa
         fun["jac_economic_cost"] = cs.Function("jac_economic_cost", [w], [cs.jacobian(economic_cost, w).T])
 
         # grad_economic_cost_ss = cs.reshape(fun["jac_economic_cost"](w_ss), -1, 1)
-        grad_economic_cost_ss = fun["jac_economic_cost"](w_ss)
+        # grad_cost_ss = np.array([60.29, 0.0, 0.0, 0.0, 0.0]).reshape(-1, 1)
+        grad_cost_ss = np.zeros((5, 1)).reshape(-1, 1)
 
         # grad_economic_cost_ss = np.ones(grad_economic_cost_ss.shape)
 
         ocp.cost.cost_type_0 = "EXTERNAL"
-        ocp.model.cost_expr_ext_cost_0 = quadratic_function(H, 0.0 * grad_economic_cost_ss, 0.0, w - w_ss)
+        ocp.model.cost_expr_ext_cost_0 = quadratic_function(H, grad_cost_ss, 0.0, w - w_ss)
         # ocp.model.cost_expr_ext_cost_0 = quadratic_function(H, grad_economic_cost_ss, 0.0, w)
 
         ocp.cost.cost_type = "EXTERNAL"
-        ocp.model.cost_expr_ext_cost = quadratic_function(H, 0.0 * grad_economic_cost_ss, 0.0, w - w_ss)
+        ocp.model.cost_expr_ext_cost = quadratic_function(H, grad_cost_ss, 0.0, w - w_ss)
 
         ocp.cost.cost_type_e = "EXTERNAL"
-        ocp.model.cost_expr_ext_cost_e = quadratic_function(
-            H[:2, :2], 0.0 * grad_economic_cost_ss[:2], 0.0, ocp.model.x - x_ss
-        )
+        ocp.model.cost_expr_ext_cost_e = quadratic_function(H[:2, :2], 0.0 * grad_cost_ss[:2], 0.0, ocp.model.x - x_ss)
 
     else:
         ocp.cost.cost_type_0 = "NONLINEAR_LS"
@@ -214,10 +213,11 @@ def setup_acados_ocp_solver_from_H(model_param: dict, H: np.ndarray, gamma: floa
         ocp.dims.ny = 5
         ocp.dims.ny_e = 2
 
-    algebraic_variables = compute_algebraic_variables(ocp.model.x, ocp.model.u, model_param)
+    algebraic_variables = compute_data(ocp.model.x, ocp.model.u, model_param, stochastic=False)
 
+    X_2 = ocp.model.x[0]
     ocp.model.f_expl_expr = cs.vertcat(
-        (model_param["F_1"] * model_param["X_1"] - algebraic_variables["F_2"] * ocp.model.x[0]) / model_param["M"],
+        (model_param["F_1"] * model_param["X_1"] - algebraic_variables["F_2"] * X_2) / model_param["M"],
         (algebraic_variables["F_4"] - algebraic_variables["F_5"]) / model_param["C"],
     )
 
@@ -334,7 +334,7 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
 
         # Constant intervals for all shooting nodes
 
-    algebraic_variables = compute_algebraic_variables(ocp.model.x, ocp.model.u, model_param)
+    algebraic_variables = compute_data(ocp.model.x, ocp.model.u, model_param)
 
     ocp.model.f_expl_expr = cs.vertcat(
         (model_param["F_1"] * model_param["X_1"] - algebraic_variables["F_5"] * ocp.model.x[0]) / model_param["M"],

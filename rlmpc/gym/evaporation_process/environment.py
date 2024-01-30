@@ -11,66 +11,55 @@ def erk4_step(f, x, u, p, h):
     return x + h * (k1 + 2 * k2 + 2 * k3 + k4) / 6
 
 
-def compute_f_expl(x: np.ndarray, u: np.ndarray, p: dict[float]) -> np.ndarray:
+def compute_f_expl(x: np.ndarray, u: np.ndarray, data: dict[float]) -> np.ndarray:
     """
     Explicit dynamics of the evaporation process.
     """
     # Unpack state and input
 
-    algebraic_variables = compute_algebraic_variables(x, u, p)
-
     X_2 = x[0]
 
-    X_2_dot = (p["F_1"] * p["X_1"] - algebraic_variables["F_2"] * X_2) / p["M"]
-    P_2_dot = (algebraic_variables["F_4"] - algebraic_variables["F_5"]) / p["C"]
+    X_2_dot = (data["F_1"] * data["X_1"] - data["F_2"] * X_2) / data["M"]
+    P_2_dot = (data["F_4"] - data["F_5"]) / data["C"]
 
     return np.array([X_2_dot, P_2_dot])
 
 
-def compute_algebraic_variables(x: np.ndarray, u: np.ndarray, p: dict[float]) -> dict[float]:
+def compute_data(x: np.ndarray, u: np.ndarray, p: dict[float], stochastic=False) -> dict[float]:
     # Unpack state and input
     X_2, P_2 = x[0], x[1]
     P_100, F_200 = u[0], u[1]
 
     # Unpack parameters
+    if stochastic:
+        X_1 = np.random.normal(p["X_1"], 1)
+        F_1 = np.random.normal(p["F_1"], 2)
+        T_1 = np.random.normal(p["T_1"], 8)
+        T_200 = np.random.normal(p["T_200"], 5)
+    else:
+        X_1 = p["X_1"]
+        F_1 = p["F_1"]
+        T_1 = p["T_1"]
+        T_200 = p["T_200"]
 
     # Algebraic equations
     T_2 = p["a"] * P_2 + p["b"] * X_2 + p["c"]
     T_3 = p["d"] * P_2 + p["e"]
 
     T_100 = p["f"] * P_100 + p["g"]
-    U_A1 = p["h"] * (p["F_1"] + p["F_3"])
+    U_A1 = p["h"] * (F_1 + p["F_3"])
 
     Q_100 = U_A1 * (T_100 - T_2)
     F_100 = Q_100 / p["lam_s"]
 
-    F_4 = (Q_100 - p["F_1"] * p["C_p"] * (T_2 - p["T_1"])) / p["lam"]
-    Q_200 = p["U_A2"] * (T_3 - p["T_200"]) / (1 + (p["U_A2"] / (2 * p["C_p"] * F_200)))
+    F_4 = (Q_100 - F_1 * p["C_p"] * (T_2 - T_1)) / p["lam"]
+    Q_200 = p["U_A2"] * (T_3 - T_200) / (1 + (p["U_A2"] / (2 * p["C_p"] * F_200)))
 
     # Terms entering the dynamics
     F_5 = Q_200 / p["lam"]
 
     # Terms entering the cost
-    F_2 = p["F_1"] - F_4
-
-    # Algebraic equations
-    T_2 = p["a"] * P_2 + p["b"] * X_2 + p["c"]
-    T_3 = p["d"] * P_2 + p["e"]
-
-    T_100 = p["f"] * P_100 + p["g"]
-    U_A1 = p["h"] * (p["F_1"] + p["F_3"])
-
-    Q_100 = U_A1 * (T_100 - T_2)
-    F_100 = Q_100 / p["lam_s"]
-
-    F_4 = (Q_100 - p["F_1"] * p["C_p"] * (T_2 - p["T_1"])) / p["lam"]
-    Q_200 = p["U_A2"] * (T_3 - p["T_200"]) / (1 + (p["U_A2"] / (2 * p["C_p"] * F_200)))
-
-    # Terms entering the dynamics
-    F_5 = Q_200 / p["lam"]
-
-    # Terms entering the cost
-    F_2 = p["F_1"] - F_4
+    F_2 = F_1 - F_4
 
     variables = {
         "T_2": T_2,
@@ -83,6 +72,12 @@ def compute_algebraic_variables(x: np.ndarray, u: np.ndarray, p: dict[float]) ->
         "F_5": F_5,
         "F_2": F_2,
         "F_100": F_100,
+        "F_1": F_1,
+        "X_1": X_1,
+        "T_1": T_1,
+        "T_200": T_200,
+        "M": p["M"],
+        "C": p["C"],
     }
 
     return variables
@@ -127,14 +122,16 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
 
         self.state = None
 
-        self.algebraic_variables = None
+        self.data = None
 
     def step(self, action):
         assert self.action_space.contains(action), f"{action!r} ({type(action)}) invalid"
         assert self.state is not None, "Call reset before using step method."
 
+        self.data = compute_data(self.state, action, self.param, stochastic=True)
+
         # print("self.state:", self.state)
-        self.state = erk4_step(compute_f_expl, self.state, action, self.param, self.step_size)
+        self.state = erk4_step(compute_f_expl, self.state, action, self.data, self.step_size)
         # print("self.state:", self.state)
 
         # reward = self._reward_fn(self.state, action)
@@ -156,9 +153,9 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         return self.state, {}
 
     def _reward_fn(self, state, action):
-        algebraic_variables = compute_algebraic_variables(state, action, self.param)
+        algebraic_variables = compute_data(state, action, self.param)
 
-        self.algebraic_variables = algebraic_variables
+        self.data = algebraic_variables
 
         F_2 = algebraic_variables["F_2"]
         F_3 = self.param["F_3"]
@@ -168,7 +165,7 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         return 10.09 * (F_2 + F_3) + 600.0 * F_100 + 0.6 * F_200
 
     def get(self, key):
-        if key in self.algebraic_variables.keys():
-            return self.algebraic_variables[key]
+        if key in self.data.keys():
+            return self.data[key]
         elif key in self.param.keys():
             return self.param[key]
