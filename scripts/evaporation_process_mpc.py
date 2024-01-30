@@ -57,29 +57,38 @@ def main():
 
     model_param = env.param
 
-    mpc = AcadosMPC(model_param=model_param, cost_param=cost_param)
+    gamma = 1.0
+
+    mpc = AcadosMPC(model_param=model_param, cost_param=cost_param, gamma=gamma)
     # mpc = AcadosMPC(model_param=model_param, H=H)
 
     obs, _ = env.reset()
     x0 = obs
     u0 = np.array([250.0, 250.0, 0.0])
 
-    gamma = 0.99
-    for stage in range(1, mpc.ocp_solver.acados_ocp.dims.N):
-        mpc.ocp_solver.cost_set(stage, "W", gamma**stage * mpc.ocp_solver.acados_ocp.cost.W)
+    # for stage in range(1, mpc.ocp_solver.acados_ocp.dims.N):
+    #     mpc.ocp_solver.cost_set(stage, "W", gamma**stage * mpc.ocp_solver.acados_ocp.cost.W)
 
     # x0 = np.array([25, 49.743], dtype=np.float32)
-    # u0 = np.array([191.713, 215.888, 0.0])
+
+    x0 = np.array([30, 60.0], dtype=np.float32)
+    u0 = np.array([191.713, 215.888, 0.0])
 
     for stage in range(mpc.ocp_solver.acados_ocp.dims.N + 1):
         mpc.ocp_solver.set(stage, "x", x0)
     for stage in range(mpc.ocp_solver.acados_ocp.dims.N):
         mpc.ocp_solver.set(stage, "u", u0)
 
+    action = mpc.get_action(x0)
+    mpc.update_nlp()
+
     replay_buffer = ReplayBuffer(100, env.observation_space, env.action_space, handle_timeout_termination=False)
 
     for i in range(replay_buffer.buffer_size):
         action = mpc.get_action(obs)
+
+        mpc.update_nlp()
+
         next_obs, reward, done, _, info = env.step(action.astype(np.float32))
         replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
         obs = next_obs

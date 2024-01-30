@@ -9,6 +9,10 @@ from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER
 from matplotlib import pyplot as plt
 
 
+def find_idx_for_labels(sub_vars, sub_label) -> np.ndarray:
+    return [i for i, label in enumerate(sub_vars.str().strip("[]").split(", ")) if sub_label in label]
+
+
 def assign_slices_to_idx(stage: int, idx: dict[slice], dims: dict[int]) -> dict[slice]:
     keys = list(dims.keys())
     for i, key in enumerate(dims.keys()):
@@ -392,7 +396,7 @@ def define_discrete_dynamics_function(ocp: AcadosOcp) -> cs.Function:
         # Integrate given amount of steps over the interval with Runge-Kutta 4 scheme
         h = ocp.solver_options.tf / ocp.dims.N / ocp.solver_options.sim_method_num_stages
 
-        for _ in range(ocp.solver_options.sim_method_num_steps):
+        for _ in range(ocp.solver_options.sim_method_num_stages):
             k1 = f(x, u, p)
             k2 = f(x + h / 2 * k1, u, p)
             k3 = f(x + h / 2 * k2, u, p)
@@ -839,7 +843,57 @@ def define_equality_constraints(vars: struct_symSX, ocp: AcadosOcp) -> cs.SX:
     return g
 
 
-def build_nlp(ocp: AcadosOcp) -> NLP:
+def get_W_0(vars: struct_symSX, ocp: AcadosOcp) -> cs.SX:
+    return cs.reshape(vars["p", find_idx_for_labels(vars["p"], "p_W_0")], ocp.cost.W_0.shape)
+
+
+def get_W(vars: struct_symSX, ocp: AcadosOcp) -> cs.SX:
+    return cs.reshape(vars["p", find_idx_for_labels(vars["p"], "p_W")], ocp.cost.W.shape)
+
+
+def get_W_e(vars: struct_symSX, ocp: AcadosOcp) -> cs.SX:
+    return cs.reshape(vars["p", find_idx_for_labels(vars["p"], "p_W_e")], ocp.cost.W_e.shape)
+
+
+def get_variable_from_param(param: struct_symSX, label: str, shape: tuple[int, int]) -> cs.SX:
+    return cs.reshape(param[find_idx_for_labels(param, f"{label}")], shape)
+
+
+def define_parameterized_nls_cost_function_0(ocp: AcadosOcp) -> cs.Function:
+    W_0 = cs.SX.sym("W", ocp.cost.W_0.shape)
+    yref_0 = cs.SX.sym("yref", (ocp.dims.ny_0, 1))
+
+    x = ocp.model.x
+    u = ocp.model.u
+    y_0_fun = define_y_0_function(ocp)
+
+    return cs.Function(
+        "l", [x, u, yref_0, W_0], [0.5 * cs.mtimes([(y_0_fun(x, u) - yref_0).T, W_0, (y_0_fun(x, u) - yref_0)])]
+    )
+
+
+def define_parameterized_nls_cost_function(ocp: AcadosOcp) -> cs.Function:
+    W = cs.SX.sym("W", ocp.cost.W.shape)
+    yref = cs.SX.sym("yref", (ocp.dims.ny, 1))
+
+    x = ocp.model.x
+    u = ocp.model.u
+    y_fun = define_y_function(ocp)
+
+    return cs.Function("l", [x, u, yref, W], [0.5 * cs.mtimes([(y_fun(x, u) - yref).T, W, (y_fun(x, u) - yref)])])
+
+
+def define_parameterized_nls_cost_function_e(ocp: AcadosOcp) -> cs.Function:
+    W_e = cs.SX.sym("W_e", ocp.cost.W_e.shape)
+    yref_e = cs.SX.sym("yref_e", (ocp.dims.ny_e, 1))
+
+    x = ocp.model.x
+    y_e_fun = define_y_e_function(ocp)
+
+    return cs.Function("l_e", [x, yref_e, W_e], [0.5 * cs.mtimes([(y_e_fun(x) - yref_e).T, W_e, (y_e_fun(x) - yref_e)])])
+
+
+def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=False) -> NLP:
     """
     Build the NLP for the OCP.
 
@@ -860,6 +914,9 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     entries["variables"].append(entry("x", struct=struct_symSX(get_state_labels(ocp)), repeat=ocp.dims.N + 1))
     # entries["variables"].append(entry("slbx", struct=struct_symSX(get_sbx_labels(ocp)), repeat=ocp.dims.N + 1))
     # entries["variables"].append(entry("subx", struct=struct_symSX(get_sbx_labels(ocp)), repeat=ocp.dims.N + 1))
+
+    # if parameterize_tracking_cost:
+
     entries["variables"].append(entry("p", struct=struct_symSX(get_parameter_labels(ocp))))
 
     # Inequality constraints
@@ -1048,12 +1105,30 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     # Lagrange multipliers for equality constraints
     entries["multipliers"]["pi"].append(entry("pi", repeat=ocp.dims.N, struct=struct_symSX(get_state_labels(ocp))))
 
+    if parameterize_tracking_cost:
+        W_0 = cs.SX.sym("W0", ocp.cost.W_0.shape)
+        W = cs.SX.sym("W", ocp.cost.W.shape)
+        W_e = cs.SX.sym("We", ocp.cost.W_e.shape)
+        yref_0 = cs.SX.sym("yref0", ocp.dims.ny_0, 1)
+        yref = cs.SX.sym("yref", ocp.dims.ny, 1)
+        yref_e = cs.SX.sym("yrefe", ocp.dims.ny_e, 1)
+
+        # p = [cs.reshape(W_0, -1), cs.reshape(W, -1), cs.reshape(W_e, -1), yref_0, yref, yref_e]
+        p = [W_0, W, W_e, yref_0, yref, yref_e]
+
+        # Concatenate all elements in p into cs.vertcat
+        p = cs.vertcat(*[cs.reshape(p_k, (-1, 1)) for p_k in p])
+
+        p_labels = p.str().strip("[]").split(", ")
+
+        entries["variables"].append(entry("p_cost", struct=struct_symSX(p_labels)))
+
     # Equality constraints
     vars = struct_symSX([tuple(entries["variables"])])
 
-    pi = struct_symSX([tuple(entries["multipliers"]["pi"])])
-
     g = define_equality_constraints(vars, ocp)
+
+    pi = struct_symSX([tuple(entries["multipliers"]["pi"])])
 
     assert g.shape[0] == pi.cat.shape[0], "Dimension mismatch between g (equality constraints) and pi (multipliers)"
 
@@ -1077,23 +1152,49 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     # Build inequality constraint
 
     if ocp.cost.cost_type == "NONLINEAR_LS":
-        cost_function = define_nls_cost_function(ocp)
-        cost_function_e = define_nls_cost_function_e(ocp)
-        cost_function_0 = define_nls_cost_function_0(ocp)
+        if not parameterize_tracking_cost:
+            cost_function = define_nls_cost_function(ocp)
+            cost_function_e = define_nls_cost_function_e(ocp)
+            cost_function_0 = define_nls_cost_function_0(ocp)
 
-        cost = 0
+            cost = 0
+            # Initial stage
+            stage_ = 0
+            cost += vars["dT", stage_] * cost_function_0(vars["x", stage_], vars["u", stage_])
 
-        # Initial stage
-        stage_ = 0
-        cost += vars["dT", stage_] * cost_function_0(vars["x", stage_], vars["u", stage_])
+            # Middle stages
+            for stage_ in range(1, ocp.dims.N):
+                cost += vars["dT", stage_] * cost_function(vars["x", stage_], vars["u", stage_])
 
-        # Middle stages
-        for stage_ in range(1, ocp.dims.N):
-            cost += vars["dT", stage_] * cost_function(vars["x", stage_], vars["u", stage_])
+            # # Add terminal cost
+            stage_ = ocp.dims.N
+            cost += cost_function_e(vars["x", stage_])
+        else:
+            cost_function = define_parameterized_nls_cost_function(ocp)
+            cost_function_e = define_parameterized_nls_cost_function_e(ocp)
+            cost_function_0 = define_parameterized_nls_cost_function_0(ocp)
 
-        # # Add terminal cost
-        stage_ = ocp.dims.N
-        cost += cost_function_e(vars["x", stage_])
+            W_0 = get_variable_from_param(vars["p_cost"], "W0", ocp.cost.W_0.shape)
+            yref_0 = get_variable_from_param(vars["p_cost"], "yref0", (ocp.dims.ny_0, 1))
+            W = get_variable_from_param(vars["p_cost"], "W_", ocp.cost.W.shape)
+            yref = get_variable_from_param(vars["p_cost"], "yref_", (ocp.dims.ny, 1))
+            W_e = get_variable_from_param(vars["p_cost"], "We", ocp.cost.W_e.shape)
+            yref_e = get_variable_from_param(vars["p_cost"], "yrefe", (ocp.dims.ny_e, 1))
+
+            cost = 0
+            # Initial stage
+            stage_ = 0
+            cost += gamma**0 * vars["dT", stage_] * cost_function_0(vars["x", stage_], vars["u", stage_], yref_0, W_0)
+
+            # Middle stages
+            for stage_ in range(1, ocp.dims.N):
+                cost += gamma**stage * vars["dT", stage_] * cost_function(vars["x", stage_], vars["u", stage_], yref, W)
+
+            # # Add terminal cost
+            stage_ = ocp.dims.N
+            cost += gamma**stage * cost_function_e(vars["x", stage_], yref_e, W_e)
+
+            print("")
 
     elif ocp.cost.cost_type == "EXTERNAL":
         cost_function = define_external_cost_function(ocp)
@@ -1104,7 +1205,7 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
         cost += vars["dT", 0] * cost_function_0(vars["x", 0], vars["u", 0], vars["p"])
         cost += sum(
             [
-                vars["dT", stage] * cost_function(vars["x", stage], vars["u", stage], vars["p"])
+                gamma**stage * vars["dT", stage] * cost_function(vars["x", stage], vars["u", stage], vars["p"])
                 for stage in range(1, ocp.dims.N)
             ]
         )
@@ -1144,7 +1245,8 @@ def build_nlp(ocp: AcadosOcp) -> NLP:
     for stage in range(ocp.dims.N):
         nlp.vars.val["dT", stage] = ocp.solver_options.tf / ocp.dims.N
 
-    nlp.vars.val["p"] = ocp.parameter_values
+    if len(ocp.parameter_values) > 0:
+        nlp.vars.val["p"] = ocp.parameter_values
 
     nlp.cost.sym = cost
     nlp.cost.val = 0
