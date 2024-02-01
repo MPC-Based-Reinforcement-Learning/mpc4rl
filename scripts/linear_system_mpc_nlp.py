@@ -17,7 +17,9 @@ def setup_p_test(p: np.ndarray, i_param: int = 0, n_test_params: int = 50) -> li
 def test_acados_ocp_nlp(
     mpc: AcadosMPC, x0: np.ndarray = np.array([[0.2], [0.2]]), u0: np.ndarray = np.array([-0.5]), plot: bool = False
 ) -> None:
-    for i_param in tqdm(range(mpc.ocp_solver.acados_ocp.dims.np), desc="Testing dV_dp for non-zero parameters"):
+    param = mpc.get_parameters()
+    # for i_param in tqdm(range(mpc.ocp_solver.acados_ocp.dims.np), desc="Testing dV_dp for non-zero parameters"):
+    for i_param in tqdm(range(len(param)), desc="Testing dV_dp for non-zero parameters"):
         p_test = setup_p_test(mpc.get_parameters(), i_param, n_test_params=50)
 
         # Only test for parameters that are not equal (otherwise nominal parameter should be zero)
@@ -114,4 +116,4 @@ if __name__ == "__main__":
     }
 
     mpc = AcadosMPC(param)
-    test_acados_ocp_nlp(mpc)
+    test_acados_ocp_nlp(mpc, plot=False)

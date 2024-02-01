@@ -158,7 +158,8 @@ class MPC(ABC):
         # self.update_nlp()
 
     def get_p(self) -> np.ndarray:
-        return self.nlp.vars.val["p"].full().flatten()
+        # return self.nlp.vars.val["p"].full().flatten()
+        return self.nlp.p.val.cat.full().flatten()
 
     def get_parameter_values(self) -> np.ndarray:
         return self.get_p()
@@ -219,10 +220,23 @@ class MPC(ABC):
             self.ocp_solver.set(stage, "x", x0)
 
     def set(self, stage, field, value):
-        self.ocp_solver.set(stage, field, value)
-
         if field == "p":
-            self.nlp.vars.val["p"] = value
+            p_temp = self.nlp.p.sym(value)
+
+            self.nlp.p.val["model"] = p_temp["model"]
+
+            if self.ocp_solver.acados_ocp.dims.np > 0:
+                self.ocp_solver.set(stage, field, p_temp["model"].full().flatten())
+
+                # if self.nlp.vars.val["p", "W_0"].shape[0] > 0:
+                #     p_temp = self.nlp.vars.sym(0)
+                #     self.ocp_solver.cost_set
+                #     # self.nlp.set(stage, field, value)
+                #     W_0 = self.nlp.vars.val["p", "W_0"].full()
+                #     print("Not implemented")
+
+        else:
+            self.ocp_solver.set(stage, field, value)
 
     def get(self, stage, field):
         return self.ocp_solver.get(stage, field)

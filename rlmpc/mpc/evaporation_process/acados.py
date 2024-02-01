@@ -143,7 +143,7 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
     ocp.dims.nu = 3
     ocp.dims.N = 100
 
-    dT = 1
+    dT = 0.5
 
     ocp.solver_options.tf = float(ocp.dims.N * dT)
     ocp.solver_options.Tsim = ocp.solver_options.tf / ocp.dims.N
@@ -165,22 +165,22 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
     x_ss = np.array([25, 49.743])
     u_ss = np.array([191.713, 215.888, 0.0])
 
-    ocp.cost.cost_type_0 = "NONLINEAR_LS"
+    # ocp.cost.cost_type_0 = "NONLINEAR_LS"
     ocp.cost.cost_type = "NONLINEAR_LS"
-    ocp.cost.cost_type_e = "NONLINEAR_LS"
-    ocp.model.cost_y_expr_0 = w
+    # ocp.cost.cost_type_e = "NONLINEAR_LS"
+    # ocp.model.cost_y_expr_0 = w
     ocp.model.cost_y_expr = w
-    ocp.model.cost_y_expr_e = ocp.model.x
-    ocp.cost.yref_0 = w_ss.full().flatten()
+    # ocp.model.cost_y_expr_e = ocp.model.x
+    # ocp.cost.yref_0 = w_ss.full().flatten()
     ocp.cost.yref = w_ss.full().flatten()
-    ocp.cost.yref_e = x_ss
-    ocp.cost.W_0 = cost_param["H"]["l"]
+    # ocp.cost.yref_e = x_ss
+    # ocp.cost.W_0 = cost_param["H"]["l"]
     ocp.cost.W = cost_param["H"]["l"]
-    ocp.cost.W_e = cost_param["H"]["Vf"]
+    # ocp.cost.W_e = cost_param["H"]["Vf"]
 
-    ocp.dims.ny_0 = 5
+    # ocp.dims.ny_0 = 5
     ocp.dims.ny = 5
-    ocp.dims.ny_e = 2
+    # ocp.dims.ny_e = 2
 
     algebraic_variables = compute_data(ocp.model.x, ocp.model.u, model_param)
 
@@ -213,5 +213,14 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
     ocp.solver_options.hessian_approx = "EXACT"
 
     ocp_solver = AcadosOcpSolver(ocp)
+
+    # Adjust weights for discounting
+    for stage in range(0, ocp_solver.acados_ocp.dims.N):
+        ocp_solver.cost_set(stage, "W", gamma**stage * ocp_solver.acados_ocp.cost.W)
+
+    if len(ocp_solver.acados_ocp.cost.W_e) > 0:
+        ocp_solver.cost_set(
+            ocp_solver.acados_ocp.dims.N, "W", gamma**ocp_solver.acados_ocp.dims.N * ocp_solver.acados_ocp.cost.W_e
+        )
 
     return ocp_solver
