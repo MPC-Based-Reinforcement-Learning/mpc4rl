@@ -34,6 +34,7 @@ def save_episode(replay_buffer: ReplayBuffer, mpc: AcadosMPC, td_error: np.ndarr
     data = np.hstack([X, U, LBX, UBX, LBU, UBU, cost.reshape(-1, 1), td_error.reshape(-1, 1)])
 
     dataframe = pd.DataFrame(index=range(replay_buffer.size()), columns=episode_columns, data=data)
+    dataframe.index.name = "k"
 
     dataframe.to_csv(f"{get_res_dir()}/episode_{i_episode}.csv")
 
@@ -83,9 +84,9 @@ INPUT_LABELS = {0: "u"}
 # PARAM_LABELS = {0: "M", 1: "m", 2: "l", 3: "g"}
 
 PLOT = True
-N_EPISODES = 3
+N_EPISODES = 100
 EPISODE_LENGTH = 100
-GAMMA = 0.99
+GAMMA = 0.90
 LR = 1e-4
 
 
@@ -205,4 +206,5 @@ if __name__ == "__main__":
 
     # Remove empty rows from dataframe and save to csv
     dataframe = dataframe.dropna()
+    dataframe.index.name = "episode"
     dataframe.to_csv(f"{get_res_dir()}/data.csv")

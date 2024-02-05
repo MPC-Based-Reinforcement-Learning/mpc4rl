@@ -276,7 +276,7 @@ class MPC(ABC):
             gamma: Discount factor.
         """
 
-        print(f"Setting discount factor to {discount_factor_}")
+        # print(f"Setting discount factor to {discount_factor_}")
 
         self.discount_factor = discount_factor_
         self.nlp.set_constant("gamma", discount_factor_)

@@ -12,7 +12,7 @@ class LinearSystemEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         max_action: float = +1.0,
         lb_noise: float = -0.1,
         ub_noise: float = +0.0,
-        param: dict = {"A": np.array([[1.0, 0.25], [0.0, 1.0]]), "B": np.array([[0.03125], [0.25]])},
+        param: dict = {"A": np.array([[0.9, 0.35], [0.0, 1.1]]), "B": np.array([[0.0813], [0.2]])},
     ):
         self.A = param["A"]
         self.B = param["B"]
@@ -52,39 +52,10 @@ class LinearSystemEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         state_cost = 0.5 * state.T @ state
         action_cost = 0.5 * action.T @ action
 
-        lower_violation_cost = any(get_lower_violation(state, self.observation_space) > 0) * 1e1
-        # lower_violation_cost = (
-        #     1e2 * get_lower_violation(state, self.observation_space).T @ get_lower_violation(state, self.observation_space)
-        # )
-
-        upper_violation_cost = any(get_upper_violation(state, self.observation_space) > 0) * 1e1
-        # if any(get_upper_violation(state, self.observation_space) > 0):
-        #     upper_violation_cost = 1e3
-        # upper_violation_cost = (
-        #     1e2 * get_upper_violation(state, self.observation_space).T @ get_upper_violation(state, self.observation_space)
-        # )
-
-        # print(f"state_cost = {state_cost}")
-        # print(f"action_cost = {action_cost}")
-        # print(f"lower_violation_cost = {lower_violation_cost}")
-        # print(f"upper_violation_cost = {upper_violation_cost}")
+        lower_violation_cost = any(get_lower_violation(state, self.observation_space) > 0) * 1e2
+        upper_violation_cost = any(get_upper_violation(state, self.observation_space) > 0) * 1e2
 
         return sum([state_cost, action_cost, lower_violation_cost, upper_violation_cost])
-
-        # Penalize large actions
-        # reward += action**2
-
-        # # Penalize constraint violations
-        # lower_violation = get_lower_violation(state, self.observation_space)
-        # reward += 1e2 * lower_violation.T @ lower_violation
-
-        # upper_violation = get_upper_violation(state, self.observation_space)
-        # reward += 1e2 * upper_violation.T @ upper_violation
-
-        # print(f"lower_violation_cost = {1e2*lower_violation.T @ lower_violation}")
-        # print(f"upper_violation_cost = {1e2*upper_violation.T @ upper_violation}")
-
-        # return reward
 
 
 def get_lower_violation(state, observation_space):
