@@ -39,7 +39,7 @@ def cost_expr_ext_cost_0(x, u, p):
 
 
 def cost_expr_ext_cost_e(x, param, N):
-    return 0.5 * param["gamma"] ** N * cs.mtimes([x.T, solve_discrete_are(param["A"], param["B"], param["Q"], param["R"]), x])
+    return 0.5 * cs.mtimes([x.T, solve_discrete_are(param["A"], param["B"], param["Q"], param["R"]), x])
 
 
 def get_parameter(field, p):
