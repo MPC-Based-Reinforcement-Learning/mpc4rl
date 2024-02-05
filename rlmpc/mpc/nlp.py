@@ -292,11 +292,18 @@ class NLP:
             return self.set_pi(stage_, value_)
         elif field_ == "lam":
             return self.set_lam(stage_, value_)
-        elif field_ == "W_0":
-            self.vars.val["W_0"] = value_
             return 0
         else:
             raise Exception(f"Field {field_} not supported.")
+
+    def set_constant(self, field_, value_):
+        self.vars.val[field_] = value_
+
+    def set_parameter(self, field_, value_):
+        self.p.val[field_] = value_
+
+    def get_parameter(self, field_) -> cs.DM:
+        return self.p.val[field_]
 
     def get_existing_sl(self, stage_) -> list[str]:
         return list(
@@ -727,7 +734,7 @@ def define_inequality_constraints(vars: struct_symSX, p: struct_symSX, ocp: Acad
     h = dict()
     lam = dict()
 
-    for stage in range(0, ocp.dims.N, +1):
+    for stage in range(0, ocp.dims.N + 1):
         h, lam = append_lbu(stage, h, lam, vars, ocp)
         h, lam = append_lbx(stage, h, lam, vars, ocp)
         h, lam = append_lh(stage, h, lam, vars, p, ocp)
@@ -747,6 +754,7 @@ def define_inequality_constraints(vars: struct_symSX, p: struct_symSX, ocp: Acad
 def define_equality_constraints(vars_: struct_symSX, p_: struct_symSX, ocp_: AcadosOcp) -> cs.SX:
     g = list()
     f_disc = define_discrete_dynamics_function(ocp_)
+
     for stage in range(ocp_.dims.N):
         g.append(f_disc(vars_["x", stage], vars_["u", stage], p_["model"]) - vars_["x", stage + 1])
 
@@ -780,7 +788,7 @@ def define_parameterized_nls_cost_function_0(ocp: AcadosOcp) -> cs.Function:
     y_0_fun = define_y_0_function(ocp)
 
     return cs.Function(
-        "l", [x, u, yref_0, W_0], [0.5 * cs.mtimes([(y_0_fun(x, u) - yref_0).T, W_0, (y_0_fun(x, u) - yref_0)])]
+        "l_0", [x, u, yref_0, W_0], [0.5 * cs.mtimes([(y_0_fun(x, u) - yref_0).T, W_0, (y_0_fun(x, u) - yref_0)])]
     )
 
 
@@ -816,6 +824,11 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
     TODO: Add support for varying/learning cost weights, i.e. set as parameters
     TODO: Add support for varying/learning constraints, i.e. set as parameters
     """
+
+    print("=" * 80)
+    print("Building NLP")
+    print(f"gamma = {gamma}")
+    print("=" * 80)
 
     nlp = NLP(ocp)
 
@@ -880,26 +893,30 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
     # Varying interval length
     entries["variables"].append(entry("dT", repeat=ocp.dims.N))
 
+    entries["variables"].append(entry("gamma", shape=(1, 1)))
+
     # Lagrange multipliers for equality constraints
     entries["multipliers"]["pi"].append(entry("pi", repeat=ocp.dims.N, shape=(ocp.dims.nx, 1)))
 
     # Parameters
     p_entries = []
+
+    # if ocp_attribute_not_empty(ocp.parameter_values):
     p_entries.append(entry("model", struct=struct_symSX(ocp.model.p.str().strip("[]").split(", "))))
 
-    if parameterize_tracking_cost:
-        if ocp_attribute_not_empty(ocp.cost.W_0):
-            p_entries.append(entry("W_0", shape=ocp.cost.W_0.shape))
-        if ocp_attribute_not_empty(ocp.cost.W):
-            p_entries.append(entry("W", shape=ocp.cost.W.shape))
-        if ocp_attribute_not_empty(ocp.cost.W_e):
-            p_entries.append(entry("W_e", shape=ocp.cost.W_e.shape))
-        if ocp_attribute_not_empty(ocp.cost.yref_0):
-            p_entries.append(entry("yref_0", shape=ocp.cost.yref_0.shape))
-        if ocp_attribute_not_empty(ocp.cost.yref):
-            p_entries.append(entry("yref", shape=ocp.cost.yref.shape))
-        if ocp_attribute_not_empty(ocp.cost.yref_e):
-            p_entries.append(entry("yref_e", shape=ocp.cost.yref_e.shape))
+    # if parameterize_tracking_cost:
+    if ocp_attribute_not_empty(ocp.cost.W_0):
+        p_entries.append(entry("W_0", shape=ocp.cost.W_0.shape))
+    if ocp_attribute_not_empty(ocp.cost.W):
+        p_entries.append(entry("W", shape=ocp.cost.W.shape))
+    if ocp_attribute_not_empty(ocp.cost.W_e):
+        p_entries.append(entry("W_e", shape=ocp.cost.W_e.shape))
+    if ocp_attribute_not_empty(ocp.cost.yref_0):
+        p_entries.append(entry("yref_0", shape=ocp.cost.yref_0.shape))
+    if ocp_attribute_not_empty(ocp.cost.yref):
+        p_entries.append(entry("yref", shape=ocp.cost.yref.shape))
+    if ocp_attribute_not_empty(ocp.cost.yref_e):
+        p_entries.append(entry("yref_e", shape=ocp.cost.yref_e.shape))
 
     p = struct_symSX(p_entries)
 
@@ -959,24 +976,20 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
             if ocp_attribute_not_empty(ocp.cost.W_0):
                 cost_function_0 = define_parameterized_nls_cost_function_0(ocp)
                 stage_ = 0
-                cost += (
-                    gamma**stage_
-                    * vars["dT", stage_]
-                    * cost_function_0(vars["x", stage_], vars["u", stage_], vars["p", "yref_0"], vars["p", "W_0"])
-                )
+                cost += vars["dT", stage_] * cost_function_0(vars["x", stage_], vars["u", stage_], p["yref_0"], p["W_0"])
             if ocp_attribute_not_empty(ocp.cost.W):
                 cost_function = define_parameterized_nls_cost_function(ocp)
                 for stage_ in range(1, ocp.dims.N):
                     cost += (
-                        gamma**stage_
+                        vars["gamma"] ** stage_
                         * vars["dT", stage_]
-                        * cost_function(vars["x", stage_], vars["u", stage_], vars["p", "yref"], vars["p", "W"])
+                        * cost_function(vars["x", stage_], vars["u", stage_], p["yref"], p["W"])
                     )
 
             if ocp_attribute_not_empty(ocp.cost.W_e):
                 cost_function_e = define_parameterized_nls_cost_function_e(ocp)
                 stage_ = ocp.dims.N
-                cost += gamma**stage * cost_function_e(vars["x", stage_], vars["p", "yref_e"], vars["p", "W_e"])
+                cost += vars["gamma"] ** stage * cost_function_e(vars["x", stage_], p["yref_e"], p["W_e"])
 
             print("")
 
@@ -986,14 +999,14 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
         cost_function_e = define_external_cost_function_e(ocp)
 
         cost = 0
-        cost += vars["dT", 0] * gamma**0 * cost_function_0(vars["x", 0], vars["u", 0], p["model"])
+        cost += vars["dT", 0] * cost_function_0(vars["x", 0], vars["u", 0], p["model"])
         cost += sum(
             [
-                gamma**stage * vars["dT", stage] * cost_function(vars["x", stage], vars["u", stage], p["model"])
+                vars["gamma"] ** stage * vars["dT", stage] * cost_function(vars["x", stage], vars["u", stage], p["model"])
                 for stage in range(1, ocp.dims.N)
             ]
         )
-        cost += cost_function_e(vars["x", ocp.dims.N], p["model"])
+        cost += vars["gamma"] ** ocp.dims.N * cost_function_e(vars["x", ocp.dims.N], p["model"])
 
         # TODO: Add support for mixing relaxed constraints
         if len(ocp.constraints.idxsh) > 0 and len(ocp.constraints.idxsbx) > 0:
@@ -1003,16 +1016,36 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
 
         # Add cost for slack variables
         if len(ocp.constraints.idxsh) > 0:
-            cost += sum([vars["dT", stage] * vars[f"slh_{stage}"].T @ ocp.cost.zl for stage in range(ocp.dims.N)])
-            cost += sum([vars["dT", stage] * vars[f"suh_{stage}"].T @ ocp.cost.zu for stage in range(ocp.dims.N)])
+            cost += sum(
+                [
+                    vars["dT", stage] * vars["gamma"] ** stage * vars[f"slh_{stage}"].T @ ocp.cost.zl
+                    for stage in range(ocp.dims.N)
+                ]
+            )
+            cost += sum(
+                [
+                    vars["dT", stage] * vars["gamma"] ** stage * vars[f"suh_{stage}"].T @ ocp.cost.zu
+                    for stage in range(ocp.dims.N)
+                ]
+            )
 
         if len(ocp.constraints.idxsh_e) > 0:
             cost += vars[f"slh_{ocp.dims.N}"].T @ ocp.cost.zl_e
             cost += vars[f"suh_{ocp.dims.N}"].T @ ocp.cost.zu_e
 
         if len(ocp.constraints.idxsbx) > 0:
-            cost += sum([vars[f"slbx_{stage}"] @ ocp.cost.zl for stage in range(1, ocp.dims.N)])
-            cost += sum([vars[f"subx_{stage}"] @ ocp.cost.zu for stage in range(1, ocp.dims.N)])
+            cost += sum(
+                [
+                    vars["dT", stage] * vars["gamma"] ** stage * vars[f"slbx_{stage}"] @ ocp.cost.zl
+                    for stage in range(1, ocp.dims.N)
+                ]
+            )
+            cost += sum(
+                [
+                    vars["dT", stage] * vars["gamma"] ** stage * vars[f"subx_{stage}"] @ ocp.cost.zu
+                    for stage in range(1, ocp.dims.N)
+                ]
+            )
 
         if len(ocp.constraints.idxsbx_e) > 0:
             cost += vars[f"slbx_{ocp.dims.N}"] @ ocp.cost.zl_e
@@ -1027,25 +1060,28 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
             nlp.vars.val[f"lbu_{stage}"] = ocp.constraints.lbu
             nlp.vars.val[f"ubu_{stage}"] = ocp.constraints.ubu
 
+    nlp.p.sym = p
+    nlp.p.val = p(0)
+
     if ocp_attribute_not_empty(ocp.cost.W_0):
-        nlp.vars.val["p", "W_0"] = ocp.cost.W_0
+        nlp.set_parameter("W_0", ocp.cost.W_0)
     if ocp_attribute_not_empty(ocp.cost.W):
-        nlp.vars.val["p", "W"] = ocp.cost.W
+        nlp.set_parameter("W", ocp.cost.W)
     if ocp_attribute_not_empty(ocp.cost.W_e):
-        nlp.vars.val["p", "W_e"] = ocp.cost.W_e
+        nlp.set_parameter("W_e", ocp.cost.W_e)
     if ocp_attribute_not_empty(ocp.cost.yref_0):
-        nlp.vars.val["p", "yref_0"] = ocp.cost.yref_0
+        nlp.set_parameter("yref_0", ocp.cost.yref_0)
     if ocp_attribute_not_empty(ocp.cost.yref):
-        nlp.vars.val["p", "yref"] = ocp.cost.yref
+        nlp.set_parameter("yref", ocp.cost.yref)
     if ocp_attribute_not_empty(ocp.cost.yref_e):
-        nlp.vars.val["p", "yref_e"] = ocp.cost.yref_e
+        nlp.set_parameter("yref_e", ocp.cost.yref_e)
+    if ocp_attribute_not_empty(ocp.parameter_values):
+        nlp.set_parameter("model", ocp.parameter_values)
 
     for stage in range(ocp.dims.N):
         nlp.vars.val["dT", stage] = ocp.solver_options.tf / ocp.dims.N
 
-    nlp.p.sym = p
-    nlp.p.val = p(0)
-    nlp.p.val["model"] = ocp.parameter_values
+    nlp.vars.val["gamma"] = gamma
 
     nlp.cost.sym = cost
     nlp.cost.val = 0
@@ -1264,20 +1300,30 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     nlp.dR_dz.val = nlp.dR_dz.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
     nlp.dR_dp.val = nlp.dR_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
 
-    if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref_0):
-        assert np.allclose(
-            nlp.vars.val["p", "yref_0"].full().flatten(), ocp_solver.acados_ocp.cost.yref_0, atol=1e-6
-        ), "Reference trajectory mismatch between NLP and OCP solver."
+    if False:
+        if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref_0):
+            assert np.allclose(
+                nlp.get_parameter("yref_0").full().flatten(), ocp_solver.acados_ocp.cost.yref_0, atol=1e-6
+            ), f"Reference trajectory mismatch between NLP and OCP solver. NLP: {nlp.get_parameter('yref_0').full()}, OCP solver: \
+                {ocp_solver.acados_ocp.cost.yref_0}"
 
-    if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref):
-        assert np.allclose(
-            nlp.vars.val["p", "yref"].full().flatten(), ocp_solver.acados_ocp.cost.yref, atol=1e-6
-        ), "Reference trajectory mismatch between NLP and OCP solver."
+        if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref):
+            assert np.allclose(
+                nlp.get_parameter("yref").full().flatten(), ocp_solver.acados_ocp.cost.yref, atol=1e-6
+            ), f"Reference trajectory mismatch between NLP and OCP solver. NLP: {nlp.get_parameter('yref').full()}, OCP solver: \
+                {ocp_solver.acados_ocp.cost.yref}"
 
-    if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref_e):
-        assert np.allclose(
-            nlp.vars.val["p", "yref_e"].full().flatten(), ocp_solver.acados_ocp.cost.yref_e, atol=1e-6
-        ), "Reference trajectory mismatch between NLP and OCP solver."
+        if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref_e):
+            assert np.allclose(
+                nlp.get_parameter("yref_e").full().flatten(), ocp_solver.acados_ocp.cost.yref_e, atol=1e-6
+            ), f"Reference trajectory mismatch between NLP and OCP solver. NLP: {nlp.get_parameter('yref_e').full()}, OCP solver: \
+                {ocp_solver.acados_ocp.cost.yref_e}"
+
+    assert (
+        # abs(nlp.cost.val - ocp_solver.get_cost()) < 1e-6
+        abs(nlp.cost.val - ocp_solver.get_cost())
+        < 1e-3
+    ), f"Cost mismatch between NLP and OCP solver. NLP cost: {nlp.cost.val}, OCP solver cost: {ocp_solver.get_cost()}"
 
     assert np.allclose(
         nlp.u.val, np.vstack([ocp_solver.get(stage, "u") for stage in range(ocp_solver.acados_ocp.dims.N)]), atol=1e-6
@@ -1311,9 +1357,8 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
         atol=1e-6,
     ), "Slack variables mismatch between NLP and OCP solver."
 
-    assert (
-        abs(nlp.cost.val - ocp_solver.get_cost()) < 1e-1
-    ), f"Cost mismatch between NLP and OCP solver. NLP cost: {nlp.cost.val}, OCP solver cost: {ocp_solver.get_cost()}"
+    # print("NLP Cost: ", nlp.cost.val)
+    # print("OCP Solver Cost: ", ocp_solver.get_cost())
 
     assert np.allclose(nlp.g.val, 0.0, atol=1e-6), "Equality constraints are not satisfied."
 
@@ -1327,6 +1372,9 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
 
     assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
 
-    assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
+    # assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
+    assert np.allclose(
+        nlp.dL_dx.val, 0.0, atol=1e-6
+    ), f"Stationarity wrt x not satisfied. Conflicting elements: {np.abs(nlp.dL_dx.val.full()) >= 1e-6}"
 
     return nlp

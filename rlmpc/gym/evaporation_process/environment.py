@@ -116,7 +116,9 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         max_observation: np.ndarray = np.array([200.0, 160.0]),
         param: dict[float] = PARAM,
         step_size: float = 1e0,
+        stochastic=True,
     ):
+        self.stochastic = stochastic
         self.step_size = step_size
         self.param = param
 
@@ -132,7 +134,7 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         assert self.action_space.contains(action), f"{action!r} ({type(action)}) invalid"
         assert self.state is not None, "Call reset before using step method."
 
-        self.data = compute_data(self.state, action, self.param, stochastic=True)
+        self.data = compute_data(self.state, action, self.param, stochastic=self.stochastic)
 
         # print("self.state:", self.state)
         self.state = erk4_step(compute_f_expl, self.state, action, self.data, self.step_size)
@@ -141,6 +143,9 @@ class EvaporationProcessEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         reward = self._reward_fn(self.state, action, self.data)
 
         return np.array(self.state, dtype=np.float32), reward, False, False, {}
+
+    def set_state(self, state: np.ndarray):
+        self.state = state
 
     def reset(
         self,
