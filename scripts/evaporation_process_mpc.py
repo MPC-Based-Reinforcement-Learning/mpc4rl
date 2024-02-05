@@ -35,29 +35,14 @@ H_nominal = np.diag([10.0, 10.0, 0.1, 0.1, 0.1])
 
 def main():
     env = gym.make("EvaporationProcessEnv-v0")
+    model_param = env.param
 
-    # H_t = np.array(
-    #     [
-    #         [6.96 * 1e0, -7.42 * 1e-1, 1.54 * 1e-1, -9.55 * 1e-4, 0.0],
-    #         [-7.42 * 1e-1, 1.23 * 1e-1, -1.62 * 1e-2, 6.86 * 1e-5, 0.0],
-    #         [1.54 * 1e-1, -1.62 * 1e-2, 7.93 * 1e-3, -2.10 * 1e-5, 0.0],
-    #         [-9.55 * 1e-4, 6.86 * 1e-5, -2.10 * 1e-5, 4.53 * 1e-3, 0.0],
-    #         [0.0, 0.0, 0.0, 0.0, 1.49 * 1e1],
-    #     ]
-    # )
-
-    weighting = "tuned"
-
-    if weighting == "tuned":
-        H = H_tuned
-    elif weighting == "nominal":
-        H = H_nominal
+    H = H_tuned
+    H[0, 0] = 0.9 * H[0, 0]
 
     cost_param = cost_param_from_H(H)
 
-    model_param = env.param
-
-    gamma = 1.0
+    gamma = 0.95
 
     mpc = AcadosMPC(model_param=model_param, cost_param=cost_param, gamma=gamma)
     # mpc = AcadosMPC(model_param=model_param, H=H)
@@ -66,21 +51,43 @@ def main():
     x0 = obs
     u0 = np.array([250.0, 250.0, 0.0])
 
-    # for stage in range(1, mpc.ocp_solver.acados_ocp.dims.N):
-    #     mpc.ocp_solver.cost_set(stage, "W", gamma**stage * mpc.ocp_solver.acados_ocp.cost.W)
-
     # x0 = np.array([25, 49.743], dtype=np.float32)
-
     x0 = np.array([30, 60.0], dtype=np.float32)
-    u0 = np.array([191.713, 215.888, 0.0])
+
+    # env.set_state(x0)
+    # obs = x0
+    # u0 = np.array([191.713, 215.888, 0.0])
 
     for stage in range(mpc.ocp_solver.acados_ocp.dims.N + 1):
         mpc.ocp_solver.set(stage, "x", x0)
+        mpc.nlp.set(stage, "x", x0)
     for stage in range(mpc.ocp_solver.acados_ocp.dims.N):
         mpc.ocp_solver.set(stage, "u", u0)
+        mpc.nlp.set(stage, "u", u0)
 
-    action = mpc.get_action(x0)
-    mpc.update_nlp()
+    if False:
+        W = mpc.nlp.get_parameter("W")
+        W[0, 0] = 1.0
+        mpc.nlp.set_parameter("W", W)
+
+        W_0 = mpc.nlp.get_parameter("W_0")
+        W_0[0, 0] = 1.0
+        mpc.nlp.set_parameter("W_0", W_0)
+
+        mpc.set_parameter(mpc.nlp.p.val.cat.full().flatten())
+
+    mpc.update(x0)
+
+    cost_diff = mpc.nlp.cost.val.full()[0][0] - mpc.ocp_solver.get_cost()
+    print(f"nlp_cost - ocp_cost: {cost_diff}")
+
+    exit(0)
+
+    # action = mpc.get_action(x0)
+
+    # mpc.update_nlp()
+
+    # exit(0)
 
     replay_buffer = ReplayBuffer(100, env.observation_space, env.action_space, handle_timeout_termination=False)
 

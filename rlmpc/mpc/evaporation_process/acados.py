@@ -102,6 +102,8 @@ class AcadosMPC(MPC):
     ):
         super(AcadosMPC, self).__init__()
 
+        self.gamma = gamma
+
         self.ocp_solver = setup_acados_ocp_solver(model_param=model_param, cost_param=cost_param, gamma=gamma)
 
         # The evaporation process model requires a non-zero initial guess
@@ -143,7 +145,7 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
     ocp.dims.nu = 3
     ocp.dims.N = 100
 
-    dT = 0.5
+    dT = 1.0
 
     ocp.solver_options.tf = float(ocp.dims.N * dT)
     ocp.solver_options.Tsim = ocp.solver_options.tf / ocp.dims.N
@@ -215,7 +217,7 @@ def setup_acados_ocp_solver(model_param: dict, cost_param: dict[dict[np.ndarray]
     ocp_solver = AcadosOcpSolver(ocp)
 
     # Adjust weights for discounting
-    for stage in range(0, ocp_solver.acados_ocp.dims.N):
+    for stage in range(1, ocp_solver.acados_ocp.dims.N):
         ocp_solver.cost_set(stage, "W", gamma**stage * ocp_solver.acados_ocp.cost.W)
 
     if len(ocp_solver.acados_ocp.cost.W_e) > 0:

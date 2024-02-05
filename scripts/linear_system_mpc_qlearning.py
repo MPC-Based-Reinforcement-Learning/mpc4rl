@@ -129,7 +129,7 @@ if __name__ == "__main__":
         "V_0": np.array([1e-3]),
     }
 
-    mpc = AcadosMPC(param)
+    mpc = AcadosMPC(param, discount_factor=0.90)
 
     # print(f"Cost with original parameters: {mpc.ocp_solver.get_cost()}")
     # parameter_values = mpc.get_parameter_values()
@@ -185,6 +185,14 @@ if __name__ == "__main__":
 
             replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
 
+            mpc.update_nlp()
+            #
+
+            print("Ocp Solver cost:", mpc.ocp_solver.get_cost())
+            print("Nlp cost: ", mpc.nlp.cost.val)
+            print("Diff cost: ", mpc.ocp_solver.get_cost() - mpc.nlp.cost.val)
+            print("")
+
         total_cost = np.sum(replay_buffer.rewards[: replay_buffer.size()])
 
         # Learning
@@ -216,13 +224,11 @@ if __name__ == "__main__":
         dataframe.loc[i_episode, "cost"] = total_cost
         dataframe.loc[i_episode, "td_error"] = np.mean(td_error)
 
-        # plot_episode(replay_buffer, mpc, td_error, cost)
-
         save_episode(replay_buffer, mpc, td_error, cost, i_episode)
 
         # Parameter update
-        mpc.set_p(
-            mpc.get_p() + np.mean(np.vstack([LR * td_error[i] * dQ_dp[i, :] for i in range(n_episode_samples - 1)]), axis=0)
-        )
+        dp = np.mean(np.vstack([LR * td_error[i] * dQ_dp[i, :] for i in range(n_episode_samples - 1)]), axis=0)
+        next_parameter_values = mpc.get_parameter_values() + dp
+        mpc.set_parameter(next_parameter_values)
 
     dataframe.to_csv("data.csv")
