@@ -14,3 +14,8 @@ register(
     id="LinearSystemEnv-v0",
     entry_point="rlmpc.gym.linear_system.environment:LinearSystemEnv",
 )
+
+register(
+    id="EvaporationProcessEnv-v0",
+    entry_point="rlmpc.gym.evaporation_process.environment:EvaporationProcessEnv",
+)

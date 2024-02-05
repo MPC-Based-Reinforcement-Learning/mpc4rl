@@ -14,12 +14,14 @@ class AcadosMPC(MPC):
 
     nlp: NLP
 
-    def __init__(self, param):
+    def __init__(self, param, discount_factor=0.99):
         super(AcadosMPC, self).__init__()
 
         self.ocp_solver = setup_acados_ocp_solver(param)
 
-        self.nlp = build_nlp(self.ocp_solver.acados_ocp)
+        self.nlp = build_nlp(self.ocp_solver.acados_ocp, gamma=discount_factor)
+
+        self.set_discount_factor(discount_factor)
 
 
 def disc_dyn_expr(x, u, param):
@@ -90,12 +92,6 @@ def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
     ocp.constraints.idxbx = np.array([0, 1])
     ocp.constraints.lbx = np.array([-0.0, -1.0])
     ocp.constraints.ubx = np.array([+1.0, +1.0])
-
-    # ocp.constraints.idxsbx = np.array([0, 1])
-    # ocp.cost.zl = np.array([1e2, 1e2])
-    # ocp.cost.zu = np.array([1e2, 1e2])
-    # ocp.cost.Zl = np.diag([0, 0])
-    # ocp.cost.Zu = np.diag([0, 0])
 
     ocp.constraints.idxsbx = np.array([0])
     ocp.cost.zl = np.array([1e2])

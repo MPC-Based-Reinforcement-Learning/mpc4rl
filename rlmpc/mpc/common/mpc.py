@@ -2,6 +2,7 @@ import numpy as np
 from abc import ABC
 from acados_template import AcadosOcp, AcadosOcpSolver
 from rlmpc.mpc.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
+from ctypes import CDLL, POINTER, byref, c_char_p, c_double, c_int, c_int64, c_void_p, cast
 
 
 class MPC(ABC):
@@ -13,8 +14,10 @@ class MPC(ABC):
     nlp: NLP
     ocp_solver: AcadosOcpSolver
 
-    def __init__(self):
+    def __init__(self, gamma: float = 1.0):
         super().__init__()
+
+        self.discount_factor = gamma
 
     # def get_parameters(self) -> np.ndarray:
     #     """
@@ -39,8 +42,8 @@ class MPC(ABC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        self.nlp.set(0, "lbx", x0)
-        self.nlp.set(0, "ubx", x0)
+        # self.nlp.set(0, "lbx", x0)
+        # self.nlp.set(0, "ubx", x0)
 
         # Solve the optimization problem
         self.status = self.ocp_solver.solve()
@@ -82,10 +85,14 @@ class MPC(ABC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
-        self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
-        self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
+        if status != 0:
+            raise RuntimeError(f"Solver failed q_update with status {status}. Exiting.")
+            exit(0)
 
         self.nlp = update_nlp(self.nlp, self.ocp_solver)
+
+        self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
+        self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
 
         # Change bounds back to original
         self.nlp.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
@@ -154,7 +161,8 @@ class MPC(ABC):
         # self.update_nlp()
 
     def get_p(self) -> np.ndarray:
-        return self.nlp.vars.val["p"].full().flatten()
+        # return self.nlp.vars.val["p"].full().flatten()
+        return self.nlp.p.val.cat.full().flatten()
 
     def get_parameter_values(self) -> np.ndarray:
         return self.get_p()
@@ -197,6 +205,10 @@ class MPC(ABC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
+        if status != 0:
+            raise RuntimeError(f"Solver failed update with status {status}. Exiting.")
+            exit(0)
+
         self.update_nlp()
 
         # test_nlp_sanity(self.nlp)
@@ -205,16 +217,88 @@ class MPC(ABC):
 
     def reset(self, x0: np.ndarray):
         self.ocp_solver.reset()
+        self.set_discount_factor(self.discount_factor)
 
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
             # self.ocp_solver.set(stage, "x", self.ocp_solver.acados_ocp.constraints.lbx_0)
             self.ocp_solver.set(stage, "x", x0)
 
     def set(self, stage, field, value):
-        self.ocp_solver.set(stage, field, value)
-
         if field == "p":
-            self.nlp.vars.val["p"] = value
+            p_temp = self.nlp.p.sym(value)
+            for key in p_temp.keys():
+                self.nlp.set_parameter(key, p_temp[key])
+
+            if self.ocp_solver.acados_ocp.dims.np > 0:
+                self.ocp_solver.set(stage, field, p_temp["model"].full().flatten())
+
+                # if self.nlp.vars.val["p", "W_0"].shape[0] > 0:
+                #     p_temp = self.nlp.vars.sym(0)
+                #     self.ocp_solver.cost_set
+                #     # self.nlp.set(stage, field, value)
+                #     W_0 = self.nlp.vars.val["p", "W_0"].full()
+                #     print("Not implemented")
+
+        else:
+            self.ocp_solver.set(stage, field, value)
+
+    def set_parameter(self, value_, api="new"):
+        p_temp = self.nlp.p.sym(value_)
+
+        if "W_0" in p_temp.keys():
+            self.nlp.set_parameter("W_0", p_temp["W_0"])
+            self.ocp_solver.cost_set(0, "W", self.nlp.get_parameter("W_0").full(), api=api)
+
+        if "W" in p_temp.keys():
+            self.nlp.set_parameter("W", p_temp["W"])
+            for stage in range(1, self.ocp_solver.acados_ocp.dims.N):
+                self.ocp_solver.cost_set(stage, "W", self.nlp.get_parameter("W").full(), api=api)
+
+        if "yref_0" in p_temp.keys():
+            self.nlp.set_parameter("yref_0", p_temp["yref_0"])
+            self.ocp_solver.cost_set(0, "yref", self.nlp.get_parameter("yref_0").full().flatten(), api=api)
+
+        if "yref" in p_temp.keys():
+            self.nlp.set_parameter("yref", p_temp["yref"])
+            for stage in range(1, self.ocp_solver.acados_ocp.dims.N):
+                self.ocp_solver.cost_set(stage, "yref", self.nlp.get_parameter("yref").full().flatten(), api=api)
+
+        if self.ocp_solver.acados_ocp.dims.np > 0:
+            self.nlp.set_parameter("model", p_temp["model"])
+            for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+                self.ocp_solver.set(stage, "p", p_temp["model"].full().flatten())
+
+    def set_discount_factor(self, discount_factor_: float) -> None:
+        """
+        Set the discount factor.
+
+        Args:
+            gamma: Discount factor.
+        """
+
+        print(f"Setting discount factor to {discount_factor_}")
+
+        self.discount_factor = discount_factor_
+        self.nlp.set_constant("gamma", discount_factor_)
+
+        # stage_ = 1
+        # field_ = "W"
+        # value_ = np.identity(5)
+
+        field_ = "scaling"
+
+        field = field_
+        field = field.encode("utf-8")
+
+        # Need to bypass cost_set for scaling
+        for stage_ in range(1, self.ocp_solver.acados_ocp.dims.N + 1):
+            stage = c_int(stage_)
+            value_ = np.array([self.discount_factor]) ** stage_
+            value_data = cast(value_.ctypes.data, POINTER(c_double))
+            value_data_p = cast((value_data), c_void_p)
+            self.ocp_solver.shared_lib.ocp_nlp_cost_model_set(
+                self.ocp_solver.nlp_config, self.ocp_solver.nlp_dims, self.ocp_solver.nlp_in, stage, field, value_data_p
+            )
 
     def get(self, stage, field):
         return self.ocp_solver.get(stage, field)
