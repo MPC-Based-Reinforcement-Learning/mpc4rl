@@ -1,21 +1,13 @@
-from rlmpc.mpc.linear_system.acados import AcadosMPC
 import numpy as np
 import matplotlib.pyplot as plt
 import gymnasium as gym
-from tqdm import tqdm
-
-from rlmpc.gym.linear_system.environment import LinearSystemEnv  # noqa: F401
-
-from rlmpc.common.utils import get_root_path
-
-
-from stable_baselines3.common.buffers import ReplayBuffer
-
-
 import pandas as pd
-
-
 import os
+import tqdm
+from stable_baselines3.common.buffers import ReplayBuffer
+from rlmpc.mpc.linear_system.acados import AcadosMPC
+from rlmpc.gym.linear_system.environment import LinearSystemEnv  # noqa: F401
+from rlmpc.common.utils import get_root_path
 
 
 def save_episode(replay_buffer: ReplayBuffer, mpc: AcadosMPC, td_error: np.ndarray, cost: np.ndarray, i_episode: int) -> None:
@@ -42,6 +34,7 @@ def save_episode(replay_buffer: ReplayBuffer, mpc: AcadosMPC, td_error: np.ndarr
     data = np.hstack([X, U, LBX, UBX, LBU, UBU, cost.reshape(-1, 1), td_error.reshape(-1, 1)])
 
     dataframe = pd.DataFrame(index=range(replay_buffer.size()), columns=episode_columns, data=data)
+    dataframe.index.name = "k"
 
     dataframe.to_csv(f"{get_res_dir()}/episode_{i_episode}.csv")
 
@@ -93,7 +86,7 @@ INPUT_LABELS = {0: "u"}
 PLOT = True
 N_EPISODES = 100
 EPISODE_LENGTH = 100
-GAMMA = 0.99
+GAMMA = 0.90
 LR = 1e-4
 
 
@@ -114,8 +107,6 @@ def get_res_dir() -> str:
 
 
 if __name__ == "__main__":
-    print("Running test_acados_mpc_closed_loop.py ...")
-
     res_dir = get_res_dir()
 
     param = {
@@ -124,30 +115,21 @@ if __name__ == "__main__":
         "Q": np.identity(2),
         "R": np.identity(1),
         "b": np.array([[0.0], [0.0]]),
-        "gamma": 0.9,
         "f": np.array([[0.0], [0.0], [0.0]]),
         "V_0": np.array([1e-3]),
     }
 
-    mpc = AcadosMPC(param, discount_factor=0.90)
+    discount_factor = GAMMA
 
-    # print(f"Cost with original parameters: {mpc.ocp_solver.get_cost()}")
-    # parameter_values = mpc.get_parameter_values()
-    # parameter_values[-4] = 1
-
-    # for stage in range(mpc.ocp_solver.acados_ocp.dims.N + 1):
-    #     mpc.ocp_solver.set(stage, "p", parameter_values)
-
-    # print(f"Cost with modified parameters: {mpc.ocp_solver.get_cost()}")
-
-    min_observation = mpc.ocp_solver.acados_ocp.constraints.lbx
-    max_observation = mpc.ocp_solver.acados_ocp.constraints.ubx
+    mpc = AcadosMPC(param, discount_factor=discount_factor)
 
     env = gym.make(
-        "LinearSystemEnv-v0", lb_noise=-0.1, ub_noise=0.1, min_observation=min_observation, max_observation=max_observation
+        "LinearSystemEnv-v0",
+        lb_noise=-0.1,
+        ub_noise=0.1,
+        min_observation=mpc.ocp_solver.acados_ocp.constraints.lbx,
+        max_observation=mpc.ocp_solver.acados_ocp.constraints.ubx,
     )
-
-    # env = create_environment(config=config)
 
     replay_buffer = ReplayBuffer(
         buffer_size=EPISODE_LENGTH,
@@ -156,7 +138,6 @@ if __name__ == "__main__":
         handle_timeout_termination=False,
     )
 
-    parameter_values = mpc.get_parameter_values()
     parameter_labels = mpc.get_parameter_labels()
     state_labels = mpc.get_state_labels()
     input_labels = mpc.get_input_labels()
@@ -181,17 +162,9 @@ if __name__ == "__main__":
 
             next_obs, reward, done, _, info = env.step(action.flatten().astype(np.float32))
 
-            obs = next_obs
-
             replay_buffer.add(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, infos=info)
 
-            mpc.update_nlp()
-            #
-
-            print("Ocp Solver cost:", mpc.ocp_solver.get_cost())
-            print("Nlp cost: ", mpc.nlp.cost.val)
-            print("Diff cost: ", mpc.ocp_solver.get_cost() - mpc.nlp.cost.val)
-            print("")
+            obs = next_obs
 
         total_cost = np.sum(replay_buffer.rewards[: replay_buffer.size()])
 
@@ -202,7 +175,7 @@ if __name__ == "__main__":
         v = np.zeros(n_episode_samples)
         dp = np.zeros(mpc.get_p().shape)
         mpc.reset(replay_buffer.observations[0].reshape(-1))
-        for i_sample in tqdm(
+        for i_sample in tqdm.tqdm(
             range(n_episode_samples), desc=f"Episode {i_episode} | Total Cost: {total_cost:.2f} | Learning ..."
         ):
             status = mpc.q_update(
@@ -231,4 +204,7 @@ if __name__ == "__main__":
         next_parameter_values = mpc.get_parameter_values() + dp
         mpc.set_parameter(next_parameter_values)
 
-    dataframe.to_csv("data.csv")
+    # Remove empty rows from dataframe and save to csv
+    dataframe = dataframe.dropna()
+    dataframe.index.name = "episode"
+    dataframe.to_csv(f"{get_res_dir()}/data.csv")
