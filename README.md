@@ -1,5 +1,6 @@
 # rlmpc
 
+![Overview](/assets/img/overview.png "Overview")
 
 ## Installation
 
