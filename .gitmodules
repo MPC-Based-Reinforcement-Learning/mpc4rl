@@ -1,9 +1,0 @@
-[submodule "external/acados"]
-	path = external/acados
-	url = git@github.com:dirkpr/acados.git
-[submodule "external/gymnasium"]
-	path = external/gymnasium
-    url = git@github.com:Farama-Foundation/Gymnasium.git
-[submodule "external/stable_baselines3"]
-	path = external/stable_baselines3
-	url = git@github.com:dirkpr/stable-baselines3.git
