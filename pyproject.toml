@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rlmpc"
+version = "2024.0.0"
+dependencies = ["gymnasium", "stable_baselines3", "tqdm", "pyyaml"]
+requires-python = ">=3.8"
+authors = [{ name = "Dirk Reinhardt", email = "dirk.p.reinhardt@ntnu.no" }]
+maintainers = [{ name = "Dirk Reinhardt", email = "dirk.p.reinhardt@ntnu.no" }]
+description = "Reinforcement Learning based on Model Predictive Control"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+keywords = ["Reinforcement Learning", "Model Predictive Control"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+]
+
+[tool.setuptools]
+packages = ["rlmpc"]
+
+
+[project.urls]
+Repository = "https://github.com/MPC-Based-Reinforcement-Learning/rlmpc"
+"Bug Tracker" = "https://github.com/MPC-Based-Reinforcement-Learning/rlmpc/issues"
