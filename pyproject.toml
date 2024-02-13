@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rlmpc"
 version = "2024.0.0"
-dependencies = ["gymnasium", "stable_baselines3", "tqdm", "pyyaml"]
+dependencies = ["gymnasium", "stable_baselines3", "tqdm", "pyyaml", "pytest"]
 requires-python = ">=3.8"
 authors = [{ name = "Dirk Reinhardt", email = "dirk.p.reinhardt@ntnu.no" }]
 maintainers = [{ name = "Dirk Reinhardt", email = "dirk.p.reinhardt@ntnu.no" }]
