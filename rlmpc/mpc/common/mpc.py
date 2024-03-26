@@ -280,25 +280,11 @@ class MPC(ABC):
 
         self.discount_factor = discount_factor_
         self.nlp.set_constant("gamma", discount_factor_)
-
-        # stage_ = 1
-        # field_ = "W"
-        # value_ = np.identity(5)
-
         field_ = "scaling"
-
-        field = field_
-        field = field.encode("utf-8")
 
         # Need to bypass cost_set for scaling
         for stage_ in range(1, self.ocp_solver.acados_ocp.dims.N + 1):
-            stage = c_int(stage_)
-            value_ = np.array([self.discount_factor]) ** stage_
-            value_data = cast(value_.ctypes.data, POINTER(c_double))
-            value_data_p = cast((value_data), c_void_p)
-            self.ocp_solver.shared_lib.ocp_nlp_cost_model_set(
-                self.ocp_solver.nlp_config, self.ocp_solver.nlp_dims, self.ocp_solver.nlp_in, stage, field, value_data_p
-            )
+            self.ocp_solver.cost_set(stage_, field_, np.array([self.discount_factor ** stage_]))
 
     def get(self, stage, field):
         return self.ocp_solver.get(stage, field)
