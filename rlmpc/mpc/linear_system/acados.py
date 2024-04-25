@@ -25,20 +25,35 @@ class AcadosMPC(MPC):
 
 
 def disc_dyn_expr(x, u, param):
+    """
+    Define the discrete dynamics function expression.
+    """
     return param["A"] @ x + param["B"] @ u + param["b"]
 
 
 def cost_expr_ext_cost(x, u, p):
+    """
+    Define the external cost function expression.
+    """
     f = get_parameter("f", p)
-    return 0.5 * (cs.mtimes([x.T, x]) + 0.5 * cs.mtimes([u.T, u])) + cs.mtimes([f.T, cs.vertcat(x, u)])
+    y = cs.vertcat(x, u)
+    expr = 0.5 * (cs.mtimes([y.T, y])) + cs.mtimes([f.T, y])
+    return expr
 
 
 def cost_expr_ext_cost_0(x, u, p):
-    V_0 = get_parameter("V_0", p)
-    return V_0 + cost_expr_ext_cost(x, u, p)
+    """
+    Define the external cost function expression at stage 0.
+    """
+    return get_parameter("V_0", p) + cost_expr_ext_cost(x, u, p)
 
 
 def cost_expr_ext_cost_e(x, param, N):
+    """
+    Define the external cost function expression at the terminal stage as the solution of the discrete-time algebraic Riccati
+    equation.
+    """
+
     return 0.5 * cs.mtimes([x.T, solve_discrete_are(param["A"], param["B"], param["Q"], param["R"]), x])
 
 

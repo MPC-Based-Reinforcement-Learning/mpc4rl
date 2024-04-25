@@ -100,7 +100,6 @@ def compute_data(x: np.ndarray, u: np.ndarray, p: dict[float], stochastic=False)
         "T_200": T_200,
         "M": p["M"],
         "C": p["C"],
-        "F_2": F_2,
         "F_3": p["F_3"],
     }
 

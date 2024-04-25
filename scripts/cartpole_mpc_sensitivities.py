@@ -98,15 +98,6 @@ def compute_value_functions_and_sensitivities(results: dict[dict], mpc: AcadosMP
     return results
 
 
-def compute_approximations(results: dict[dict]) -> dict[dict]:
-    for key in ["V", "Q", "pi"]:
-        results[key]["approx"][0] = results[key]["true"][0]
-        for i in range(1, len(results[key]["true"])):
-            results[key]["approx"][i] = results[key]["approx"][i - 1] + np.dot(
-                results[f"d{key}_dp"]["true"][i, :], p_test[i] - p_test[i - 1]
-            )
-
-    return results
 
 
 def main():
