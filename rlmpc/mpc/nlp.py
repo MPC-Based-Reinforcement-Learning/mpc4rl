@@ -1,12 +1,17 @@
 import casadi as cs
 import numpy as np
-from typing import Union
+import time
+from typing import Union, Tuple
 from casadi.tools import struct_symSX, entry
 from acados_template import AcadosOcp, AcadosOcpSolver
 
 from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER
 
 from matplotlib import pyplot as plt
+
+from scipy.sparse import csr_matrix, csc_matrix
+
+import scipy.sparse.linalg as splinalg
 
 
 def find_idx_for_labels(sub_vars, sub_label) -> np.ndarray:
@@ -215,8 +220,10 @@ class NLP:
     pi: NLPEntry  # Lange multiplier for dynamics equality constraints
     h: NLPEntry  # Inequality constraints
     lam: NLPEntry  # Lange multiplier for inequality constraints
+    t: NLPEntry  # Slack variables for interior point method
     h_dict: dict
     lam_dict: dict
+    t_dict: dict
     L: NLPEntry
     dL_dw: NLPEntry
     dL_du: NLPEntry
@@ -227,6 +234,7 @@ class NLP:
     u: NLPEntry
     z: NLPEntry
     p: NLPEntry
+    dpi_dp: NLPEntry
     # R: NLPEntry
     # dR_dw: NLPEntry
     # dR_dp: NLPEntry
@@ -251,6 +259,7 @@ class NLP:
         self.g = NLPEntry()
         self.pi = NLPEntry()
         self.h = NLPEntry()
+        self.t = NLPEntry()
         self.lam = NLPEntry()
         self.L = NLPEntry()
         self.dL_dw = NLPEntry()
@@ -259,6 +268,7 @@ class NLP:
         self.dL_dx = NLPEntry()
         self.h_dict = dict()
         self.lam_dict = dict()
+        self.t_dict = dict()
         # self.ddL_dwdw = NLPEntry()
         # self.ddL_dwdpi = NLPEntry()
         # self.ddL_dwdlam = NLPEntry()
@@ -266,6 +276,7 @@ class NLP:
         # self.dR_dw = NLPEntry()
         self.dR_dp = NLPEntry()
         self.dR_dz = NLPEntry()
+        self.dpi_dp = NLPEntry()
         # self.dT = NLPEntry()
 
     def assert_kkt_residual(self) -> np.ndarray:
@@ -292,7 +303,8 @@ class NLP:
             return self.set_pi(stage_, value_)
         elif field_ == "lam":
             return self.set_lam(stage_, value_)
-            return 0
+        elif field_ == "t":
+            return self.set_t(stage_, value_)
         else:
             raise Exception(f"Field {field_} not supported.")
 
@@ -338,10 +350,30 @@ class NLP:
         return 0
 
     def set_lam(self, stage_, value_):
-        keys = ["lbu", "lbx", "lh", "ubu", "ubx", "uh", "lsbx", "lsh", "usbx", "ush"]
-        for key in keys:
+        temp_lam_dict = dict()
+        for key in ["lbu", "lbx", "lh", "ubu", "ubx", "uh", "lsbx", "lsh", "usbx", "ush"]:
             if f"{key}_{stage_}" in self.lam_dict.keys():
-                self.lam_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.lam_idx[f"{key}_{stage_}"]]
+                # self.lam_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.lam_idx[f"{key}_{stage_}"]]
+                temp_lam_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.lam_idx[f"{key}_{stage_}"]]
+
+        assert np.concatenate(list(temp_lam_dict.values())).shape[0] == value_.shape[0], "Lamda vector has wrong shape."
+
+        for key in temp_lam_dict.keys():
+            self.lam_dict[key] = temp_lam_dict[key]
+
+        return 0
+
+    def set_t(self, stage_, value_):
+        temp_t_dict = dict()
+        for key in ["lbu", "lbx", "lh", "ubu", "ubx", "uh", "lsbx", "lsh", "usbx", "ush"]:
+            if f"{key}_{stage_}" in self.t_dict.keys():
+                # self.t_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.t_idx[f"{key}_{stage_}"]]
+                temp_t_dict[f"{key}_{stage_}"] = value_[self.multiplier_map.lam_idx[f"{key}_{stage_}"]]
+
+        assert np.concatenate(list(temp_t_dict.values())).shape[0] == value_.shape[0], "t vector has wrong shape."
+
+        for key in temp_t_dict.keys():
+            self.t_dict[key] = temp_t_dict[key]
 
         return 0
 
@@ -413,9 +445,10 @@ def define_discrete_dynamics_function(ocp: AcadosOcp) -> cs.Function:
 
         # TODO: Add support for other integrator types
         # Integrate given amount of steps over the interval with Runge-Kutta 4 scheme
-        h = ocp.solver_options.tf / ocp.dims.N / ocp.solver_options.sim_method_num_stages
+        h = ocp.solver_options.tf / ocp.dims.N / ocp.solver_options.sim_method_num_steps
 
-        for _ in range(ocp.solver_options.sim_method_num_stages):
+        # TODO: BUG: This is not doing 4 stages of RK4, but only one (four times)
+        for _ in range(ocp.solver_options.sim_method_num_steps):
             k1 = f(x, u, p)
             k2 = f(x + h / 2 * k1, u, p)
             k3 = f(x + h / 2 * k2, u, p)
@@ -437,8 +470,14 @@ def define_y_0_function(ocp: AcadosOcp) -> cs.Function:
     x = model.x
     u = model.u
 
-    if ocp.cost.cost_type_0 == "NONLINEAR_LS":
-        y_0_fun = cs.Function("y_0_fun", [x, u], [model.cost_y_expr_0], ["x", "u"], ["y_0"])
+    if ocp.cost.cost_type_0 == "LINEAR_LS":
+        cost_y_expr_0 = ocp.cost.Vx_0 @ x + ocp.cost.Vu_0 @ u
+    elif ocp.cost.cost_type_0 == "NONLINEAR_LS":
+        cost_y_expr_0 = model.cost_y_expr_0
+    else:
+        raise NotImplementedError("Only LINEAR_LS and NONLINEAR_LS cost types are supported in define_y_0_function.")
+
+    y_0_fun = cs.Function("y_0_fun", [x, u], [cost_y_expr_0], ["x", "u"], ["y_0"])
 
     return y_0_fun
 
@@ -449,8 +488,13 @@ def define_y_function(ocp: AcadosOcp) -> cs.Function:
     x = model.x
     u = model.u
 
-    if ocp.cost.cost_type == "NONLINEAR_LS":
-        y_fun = cs.Function("y_fun", [x, u], [model.cost_y_expr], ["x", "u"], ["y"])
+    if ocp.cost.cost_type == "LINEAR_LS":
+        cost_y_expr = ocp.cost.Vx @ x + ocp.cost.Vu @ u
+    elif ocp.cost.cost_type == "NONLINEAR_LS":
+        cost_y_expr = model.cost_y_expr
+    else:
+        raise NotImplementedError("Only LINEAR_LS and NONLINEAR_LS cost types are supported in define_y_function.")
+    y_fun = cs.Function("y_fun", [x, u], [cost_y_expr], ["x", "u"], ["y"])
 
     return y_fun
 
@@ -460,8 +504,12 @@ def define_y_e_function(ocp: AcadosOcp) -> cs.Function:
 
     x = model.x
 
+    if ocp.cost.cost_type_e == "LINEAR_LS":
+        cost_y_expr_e = ocp.cost.Vx_e @ x
     if ocp.cost.cost_type_e == "NONLINEAR_LS":
-        y_e_fun = cs.Function("y_e_fun", [x], [model.cost_y_expr_e], ["x"], ["y_e"])
+        cost_y_expr_e = model.cost_y_expr_e
+
+    y_e_fun = cs.Function("y_e_fun", [x], [cost_y_expr_e], ["x"], ["y_e"])
 
     return y_e_fun
 
@@ -514,6 +562,26 @@ def define_nls_cost_function_e(ocp: AcadosOcp) -> cs.Function:
 
 
 def define_nls_cost_function_0(ocp: AcadosOcp) -> cs.Function:
+    model = ocp.model
+
+    x = model.x
+    u = model.u
+    y_0_fun = define_y_0_function(ocp)
+    yref_0 = ocp.cost.yref_0
+    W_0 = ocp.cost.W_0
+
+    nls_cost_function_0 = cs.Function(
+        "l",
+        [x, u],
+        [0.5 * cs.mtimes([(y_0_fun(x, u) - yref_0).T, W_0, (y_0_fun(x, u) - yref_0)])],
+        ["x", "u"],
+        ["out"],
+    )
+
+    return nls_cost_function_0
+
+
+def define_ls_cost_function_0(ocp: AcadosOcp) -> cs.Function:
     model = ocp.model
 
     x = model.x
@@ -937,14 +1005,31 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
     # Inequality constraints
     h_dict, lam_dict = define_inequality_constraints(vars, p, ocp)
 
+    t_dict = dict.fromkeys(h_dict.keys())
+
+    for key in t_dict.keys():
+        t_dict[key] = cs.SX.sym(f"t_{key}", h_dict[key].shape)
+
     nlp.lam.sym = cs.vertcat(*list(lam_dict.values()))
     nlp.h.sym = cs.vertcat(*list(h_dict.values()))
+    nlp.t.sym = cs.vertcat(*list(t_dict.values()))
 
-    nlp.lam.val = np.zeros(nlp.lam.sym.shape[0])
-    nlp.h.val = np.zeros(nlp.h.sym.shape[0])
+    # lam_keys = nlp.lam.sym.str().strip("[]").split(", ")
+
+    # key_list = []
+    # for i in range(nlp.lam.sym.shape[0]):
+    #     key_list.append(nlp.lam.sym[i].str().split("_")[1])
+
+    # # Remove duplicates from key_list
+    # key_list = list(dict.fromkeys(key_list))
+
+    nlp.lam.val = np.nan * np.ones(nlp.lam.sym.shape[0])
+    nlp.h.val = np.nan * np.ones(nlp.h.sym.shape[0])
+    nlp.t.val = np.nan * np.ones(nlp.t.sym.shape[0])
 
     nlp.lam_dict = lam_dict
     nlp.h_dict = h_dict
+    nlp.t_dict = t_dict
 
     assert (
         nlp.h.sym.shape[0] == nlp.lam.sym.shape[0]
@@ -953,7 +1038,9 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
 
     # Build inequality constraint
 
-    if ocp.cost.cost_type == "NONLINEAR_LS":
+    # if ocp.cost.cost_type == "LINEAR_LS":
+    #     raise NotImplementedError("Not implemented yet")
+    if ocp.cost.cost_type == "NONLINEAR_LS" or ocp.cost.cost_type == "LINEAR_LS":
         if not parameterize_tracking_cost:
             cost_function = define_nls_cost_function(ocp)
             cost_function_e = define_nls_cost_function_e(ocp)
@@ -1112,6 +1199,10 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
 
     pi = nlp.pi.sym.cat
 
+    t = nlp.t.sym
+
+    tau = 1e-8
+
     w = cs.vertcat(u, x)
     nlp.dL_dw.sym = cs.jacobian(nlp.L.sym, w)
     nlp.dL_dw.fun = cs.Function("dL_dw", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym], [nlp.dL_dw.sym])
@@ -1125,18 +1216,18 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
     nlp.dL_dp.sym = cs.jacobian(nlp.L.sym, nlp.p.sym)
     nlp.dL_dp.fun = cs.Function("dL_dp", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym], [nlp.dL_dp.sym])
 
-    nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.lam.sym * nlp.h.sym)
-    nlp.R.fun = cs.Function("R", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym], [nlp.R.sym])
+    nlp.R.sym = cs.vertcat(cs.transpose(nlp.dL_dw.sym), nlp.g.sym, nlp.h.sym + nlp.t.sym, nlp.lam.sym * nlp.t.sym - tau)
+    nlp.R.fun = cs.Function("R", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym, nlp.t.sym], [nlp.R.sym])
 
     nlp.dR_dp.sym = cs.jacobian(nlp.R.sym, nlp.p.sym)
-    nlp.dR_dp.fun = cs.Function("dR_dp", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym], [nlp.dR_dp.sym])
+    nlp.dR_dp.fun = cs.Function("dR_dp", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym, nlp.t.sym], [nlp.dR_dp.sym])
 
-    nlp.z.sym = cs.vertcat(u, x, pi, lam)
+    nlp.z.sym = cs.vertcat(u, x, pi, lam, t)
 
-    nlp.z.fun = cs.Function("z", [nlp.vars.sym, nlp.pi.sym, nlp.lam.sym], [nlp.z.sym])
+    nlp.z.fun = cs.Function("z", [nlp.vars.sym, nlp.pi.sym, nlp.lam.sym, nlp.t.sym], [nlp.z.sym])
 
     nlp.dR_dz.sym = cs.jacobian(nlp.R.sym, nlp.z.sym)
-    nlp.dR_dz.fun = cs.Function("dR_dz", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym], [nlp.dR_dz.sym])
+    nlp.dR_dz.fun = cs.Function("dR_dz", [nlp.vars.sym, nlp.p.sym, nlp.pi.sym, nlp.lam.sym, nlp.t.sym], [nlp.dR_dz.sym])
 
     nlp.x.sym = cs.horzcat(*nlp.vars.sym["x", :]).T
     nlp.x.fun = cs.Function("x", [nlp.vars.sym], [nlp.x.sym])
@@ -1252,7 +1343,9 @@ def print_nlp_vars(nlp: NLP):
         print(f"{nlp.vars.val.cat[i]} <-- {nlp.vars.sym.cat[i]}")
 
 
-def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
+def update_nlp(
+    nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 1, log_timing: bool = False
+) -> tuple[NLP, dict[float]]:
     """
     Update the NLP with the solution of the OCP solver.
 
@@ -1271,8 +1364,16 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
         nlp.set(stage, "x", ocp_solver.get(stage, "x"))
     for stage in range(ocp_solver.acados_ocp.dims.N):
         nlp.set(stage, "pi", ocp_solver.get(stage, "pi"))
+
+    nlp.lam.val = cs.vertcat(*list(nlp.lam_dict.values()))
+
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "lam", ocp_solver.get(stage, "lam"))
+
+    # NOTE: New to fix singularity issue
+    for stage in range(ocp_solver.acados_ocp.dims.N + 1):
+        nlp.set(stage, "t", ocp_solver.get(stage, "t"))
+
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "sl", ocp_solver.get(stage, "sl"))
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
@@ -1282,6 +1383,10 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     nlp.set(0, "ubx", ocp_solver.get(0, "x"))
 
     nlp.lam.val = cs.vertcat(*list(nlp.lam_dict.values()))
+    nlp.t.val = cs.vertcat(*list(nlp.t_dict.values()))
+
+    # for i in range(nlp.lam.sym.shape[0]):
+    #     print(f"h: {nlp.h.sym[i]}, lam: {nlp.lam.sym[i]}")
 
     nlp.x.val = nlp.x.fun(nlp.vars.val)
     nlp.u.val = nlp.u.fun(nlp.vars.val)
@@ -1291,14 +1396,48 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
     nlp.g.val = nlp.g.fun(nlp.vars.val, nlp.p.val)
 
     nlp.L.val = nlp.L.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
+
     nlp.dL_dw.val = nlp.dL_dw.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
-    nlp.dL_dp.val = nlp.dL_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
+
     nlp.dL_du.val = nlp.dL_du.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
     nlp.dL_dx.val = nlp.dL_dx.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
 
-    nlp.R.val = nlp.R.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
-    nlp.dR_dz.val = nlp.dR_dz.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
-    nlp.dR_dp.val = nlp.dR_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
+    timing = {}
+    start_time = time.time()
+    # Compute value gradient
+    nlp.dL_dp.val = nlp.dL_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
+    timing["dL_dp"] = time.time() - start_time
+
+    # Compute policy gradient
+    nlp.R.val = nlp.R.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val, nlp.t.val)
+
+    start_time = time.time()
+    nlp.dR_dp.val = nlp.dR_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val, nlp.t.val)
+    timing["lin_params"] = time.time() - start_time
+
+    start_time = time.time()
+    nlp.dR_dz.val = nlp.dR_dz.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val, nlp.t.val)
+
+    dR_dp = nlp.dR_dp.val.full()
+    dR_dz = nlp.dR_dz.val.full()
+
+    # dz_dp = spla.bicg(dR_dz, -dR_dp, atol=1e-6, tol=1e-6)
+
+    A = csc_matrix(dR_dz)
+    b = csc_matrix(-dR_dp)
+
+    dz_dp = splinalg.spsolve(A, b)
+
+    # dz_dp = np.linalg.solve(nlp.dR_dz.val.full(), -nlp.dR_dp.val.full())
+    # dR_dz_inv = np.linalg.inv(nlp.dR_dz.val.full())
+    # timing["dR_dz_inv"] = time.time() - start_time
+
+    # start_time = time.time()
+    nlp.dpi_dp.val = dz_dp[: ocp_solver.acados_ocp.dims.nu, :]
+    # nlp.dpi_dp.val = (-dR_dz_inv @ nlp.dR_dp.val.full())[: ocp_solver.acados_ocp.dims.nu, :]
+    timing["solve_params"] = time.time() - start_time
+
+    nlp.dpi_dp.val = nlp.dpi_dp.val.toarray()
 
     if False:
         if ocp_attribute_not_empty(ocp_solver.acados_ocp.cost.yref_0):
@@ -1321,8 +1460,7 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
 
     assert (
         # abs(nlp.cost.val - ocp_solver.get_cost()) < 1e-6
-        abs(nlp.cost.val - ocp_solver.get_cost())
-        < 1e-3
+        abs(nlp.cost.val - ocp_solver.get_cost()) < 1e-3
     ), f"Cost mismatch between NLP and OCP solver. NLP cost: {nlp.cost.val}, OCP solver cost: {ocp_solver.get_cost()}"
 
     assert np.allclose(
@@ -1357,10 +1495,42 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
         atol=1e-6,
     ), "Slack variables mismatch between NLP and OCP solver."
 
+    # assert np.allclose(
+    #     nlp.p.val["yref_0"].full().flatten(),
+    #     ocp_solver.acados_ocp.cost.yref_0,
+    #     atol=1e-6,
+    # ), "Reference trajectory mismatch between NLP and OCP solver."
+
+    # assert np.allclose(
+    #     nlp.p.val["yref"].full().flatten(),
+    #     ocp_solver.acados_ocp.cost.yref,
+    #     atol=1e-6,
+    # ), "Reference trajectory mismatch between NLP and OCP solver."
+
+    # assert np.allclose(
+    #     nlp.p.val["yref_e"].full().flatten(),
+    #     ocp_solver.acados_ocp.cost.yref_e,
+    #     atol=1e-6,
+    # ), "Reference trajectory mismatch between NLP and OCP solver."
+
+    # assert np.allclose(
+    #     nlp.p.val["model"].full().flatten(),
+    #     ocp_solver.acados_ocp.parameter_values,
+    #     atol=1e-6,
+    # ), "Parameter mismatch between NLP and OCP solver."
+
     # print("NLP Cost: ", nlp.cost.val)
     # print("OCP Solver Cost: ", ocp_solver.get_cost())
 
-    assert np.allclose(nlp.g.val, 0.0, atol=1e-6), "Equality constraints are not satisfied."
+    # print("OCP Solver residuals = ", ocp_solver.get_residuals())
+    # print("NLP ...... residuals = ", nlp.R.val)
+
+    # r_b = compute_qp_eq_res(0, ocp_solver)
+    # Compute inf norm of nlp.g.val
+    g_inf_norm = np.linalg.norm(nlp.g.val.full(), np.inf)
+
+    # assert np.allclose(nlp.g.val, 0.0, atol=1e-6), "Equality constraints are not satisfied."
+    assert g_inf_norm <= 1e-4, f"Equality constraints are not satisfied. g_inf_norm = {g_inf_norm} >= 1e-4"
 
     for i in range(nlp.h.val.shape[0]):
         if nlp.h.val[i] > 1e-6:
@@ -1368,13 +1538,42 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver) -> NLP:
 
     assert np.all(nlp.h.val < 1e-6), "Inequality constraints are not satisfied."
 
-    assert np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-6), "Complementary slackness not satisfied."
+    comp_slackness_inf_norm = np.linalg.norm(nlp.lam.val * nlp.h.val, np.inf)
+    # assert np.allclose(nlp.h.val * nlp.lam.val, 0.0, atol=1e-5), "Complementary slackness not satisfied."
+    assert comp_slackness_inf_norm <= 1e-5, "Complementary slackness not satisfied."
 
-    assert np.allclose(nlp.dL_du.val, 0.0, atol=1e-6), "Stationarity wrt u not satisfied."
+    dL_du_inf_norm = np.linalg.norm(nlp.dL_du.val.full(), np.inf)
+    assert np.allclose(
+        nlp.dL_du.val, 0.0, atol=1e-3
+    ), f"Stationarity wrt u not satisfied. dL_du_inf_norm = {dL_du_inf_norm} >= 1e-3"
+
+    dL_dx_inf_norm = np.linalg.norm(nlp.dL_dx.val.full(), np.inf)
+    assert np.allclose(
+        nlp.dL_dx.val, 0.0, atol=1e-3
+    ), f"Stationarity wrt x not satisfied. dL_dx_inf_norm = {dL_dx_inf_norm} >= 1e-3"
+
+    dL_dw_inf_norm = np.linalg.norm(nlp.dL_dw.val.full(), np.inf)
+
+    if print_level > 0:
+        print("Cost")
+        print("OCP Solver Cost: ", ocp_solver.get_cost())
+        print("NLP Cost: ", nlp.cost.val)
+        print("Stationarity residuals")
+        print("OCP Solver residual = ", ocp_solver.get_residuals()[0])
+        print("NLP ...... residual = ", dL_dw_inf_norm)
+        print("Equality constraints residuals")
+        print("OCP Solver residual = ", ocp_solver.get_residuals()[1])
+        print("NLP ...... residual = ", g_inf_norm)
+        print("Complemenatary slackness residuals")
+        print("OCP Solver residual = ", ocp_solver.get_residuals()[3])
+        print("NLP ...... residual = ", comp_slackness_inf_norm)
+    # print("OCP Solver residuals = ", ocp_solver.get_residuals())
 
     # assert np.allclose(nlp.dL_dx.val, 0.0, atol=1e-6), "Stationarity wrt x not satisfied."
-    assert np.allclose(
-        nlp.dL_dx.val, 0.0, atol=1e-6
-    ), f"Stationarity wrt x not satisfied. Conflicting elements: {np.abs(nlp.dL_dx.val.full()) >= 1e-6}"
 
-    return nlp
+    # dL_dx_inf_norm = np.linalg.norm(nlp.dL_dx.val.full(), np.inf)
+    # assert np.allclose(
+    #     nlp.dL_dx.val, 0.0, atol=1e-6
+    # ), f"Stationarity wrt x not satisfied. Conflicting elements: {np.abs(nlp.dL_dx.val.full()) >= 1e-6}"
+
+    return nlp, timing

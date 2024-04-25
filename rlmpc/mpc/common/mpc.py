@@ -19,6 +19,8 @@ class MPC(ABC):
 
         self.discount_factor = gamma
 
+        self.nlp_timing = {}
+
     # def get_parameters(self) -> np.ndarray:
     #     """
     #     Get the parameters of the MPC.
@@ -106,7 +108,7 @@ class MPC(ABC):
         """
         Update the NLP with the solution of the OCP solver.
         """
-        self.nlp = update_nlp(self.nlp, self.ocp_solver)
+        self.nlp, self.nlp_timing = update_nlp(self.nlp, self.ocp_solver)
 
     def get_dV_dp(self) -> float:
         """
@@ -141,7 +143,7 @@ class MPC(ABC):
         """
         return self.get_dL_dp()
 
-    def set_p(self, p: np.ndarray) -> None:
+    def set_p(self, p: np.ndarray, finite_differences: bool = False) -> None:
         """
         Set the value of the parameters.
 
@@ -153,10 +155,10 @@ class MPC(ABC):
         # self.nlp.p.val = theta
 
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
-            self.set(stage, "p", p)
+            self.set(stage, "p", p, finite_differences=finite_differences)
 
         # self.nlp.p.val = p
-        self.nlp.vars.val["p"] = p
+        # self.nlp.vars.val["p"] = p
 
         # self.update_nlp()
 
@@ -205,11 +207,10 @@ class MPC(ABC):
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
+        # Plot prediction
+
         if status != 0:
             raise RuntimeError(f"Solver failed update with status {status}. Exiting.")
-            exit(0)
-
-        self.update_nlp()
 
         # test_nlp_sanity(self.nlp)
 
@@ -223,11 +224,12 @@ class MPC(ABC):
             # self.ocp_solver.set(stage, "x", self.ocp_solver.acados_ocp.constraints.lbx_0)
             self.ocp_solver.set(stage, "x", x0)
 
-    def set(self, stage, field, value):
+    def set(self, stage, field, value, finite_differences: bool = False):
         if field == "p":
             p_temp = self.nlp.p.sym(value)
-            for key in p_temp.keys():
-                self.nlp.set_parameter(key, p_temp[key])
+            if not finite_differences:
+                for key in p_temp.keys():
+                    self.nlp.set_parameter(key, p_temp[key])
 
             if self.ocp_solver.acados_ocp.dims.np > 0:
                 self.ocp_solver.set(stage, field, p_temp["model"].full().flatten())
@@ -366,42 +368,65 @@ class MPC(ABC):
         """
         return self.ocp_solver.get(0, "u")
 
-    def get_dpi_dp(self) -> np.ndarray:
+    def compute_dpi_dp_finite_differences(self, p: np.ndarray, idx: int = None, delta: float = 1e-4) -> np.ndarray:
+        """
+        Compute the sensitivity of the policy with respect to the parameters using finite differences.
+
+        Assumes OCP is solved for state and parameters.
+        """
+
+        pi0 = self.get_pi().copy()
+
+        p0 = self.nlp.p.val.cat.full().flatten()
+        pplus = p0.copy()
+
+        nu = self.ocp_solver.acados_ocp.dims.nu
+        nparam = p0.shape[0]
+
+        dpi_dp = np.zeros((nu, nparam))
+
+        # Check if idx is None
+        if idx is None:
+            for i in range(nparam):
+                pplus[i] += delta
+
+                self.set_p(pplus)
+
+                self.update(self.ocp_solver.acados_ocp.constraints.lbx_0)
+
+                piplus = self.get_pi()
+
+                dpi_dp[:, i] = (piplus - pi0) / (delta)
+
+                pplus[i] = p0[i]
+
+            return dpi_dp
+
+        # for i in range(nparam):
+        pplus[idx] += delta
+
+        self.set_p(pplus)
+
+        self.update(self.ocp_solver.acados_ocp.constraints.lbx_0)
+
+        piplus = self.get_pi()
+
+        dpi_dp[:, idx] = (piplus - pi0) / (delta)
+
+        pplus[idx] = p0[idx]
+
+        return dpi_dp
+
+    def get_dpi_dp(self, finite_differences: bool = False, idx: int = 0) -> np.ndarray:
         """
         Get the value of the sensitivity of the policy with respect to the parameters.
 
         Assumes OCP is solved for state and parameters.
         """
 
-        dR_dz = self.nlp.dR_dz.val.full()
-        dR_dp = self.nlp.dR_dp.val.full()
-
-        # Find the constraints that are active
-        lam_non_active_constraints = np.where(self.nlp.lam.val.full() < 1e-6)[0]
-        # h_non_active_constraints = np.where(self.nlp.h.val.full() < -1e-10)[0]
-        # non_active_constraints = np.where(self.nlp.h.val.full() < -1e-6)[0]
-
-        # Add len(w) to the indices of the non-active constraints
-        x = self.nlp.x.fun(self.nlp.vars.val)
-        u = self.nlp.u.fun(self.nlp.vars.val)
-        pi = self.nlp.pi.val.cat
-
-        # non_active_constraints += self.nlp.w.val.cat.full().shape[0]
-
-        # # Add len(pi) to the indices of the non-active constraints
-        # non_active_constraints += self.nlp.pi.val.cat.full().shape[0]
-
-        idx = x.shape[0] + u.shape[0] + pi.shape[0] + lam_non_active_constraints
-
-        # Remove the non-active constraints from dR_dz
-        dR_dz = np.delete(dR_dz, idx, axis=0)
-        dR_dz = np.delete(dR_dz, idx, axis=1)
-
-        # Remove the non-active constraints from dR_dp
-        dR_dp = np.delete(dR_dp, idx, axis=0)
-
-        dz_dp = np.linalg.solve(dR_dz, -dR_dp)
-
-        dpi_dp = dz_dp[: self.ocp_solver.acados_ocp.dims.nu, :]
+        if not finite_differences:
+            dpi_dp = self.nlp.dpi_dp.val
+        else:
+            dpi_dp = self.compute_dpi_dp_finite_differences(self.get_p(), idx=idx)
 
         return dpi_dp

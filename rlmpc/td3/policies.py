@@ -23,23 +23,19 @@ from gymnasium import spaces
 
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import (
-    BaseFeaturesExtractor,
     CombinedExtractor,
-    FlattenExtractor,
     MlpExtractor,
-    NatureCNN,
     create_mlp,
 )
 
 from stable_baselines3.td3.policies import (
-    Actor,
     CnnPolicy,
     MlpPolicy,
     MultiInputPolicy,
     TD3Policy,
 )
 
-from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
+from stable_baselines3.common.type_aliases import PyTorchObs
 
 from stable_baselines3.common.utils import (
     get_device,
