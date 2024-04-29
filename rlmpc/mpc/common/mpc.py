@@ -2,7 +2,7 @@ import numpy as np
 from abc import ABC
 from acados_template import AcadosOcp, AcadosOcpSolver
 from rlmpc.mpc.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
-from ctypes import CDLL, POINTER, byref, c_char_p, c_double, c_int, c_int64, c_void_p, cast
+from ctypes import POINTER, c_double, c_int, c_void_p, cast
 
 
 class MPC(ABC):
@@ -21,12 +21,6 @@ class MPC(ABC):
 
         self.nlp_timing = {}
 
-    # def get_parameters(self) -> np.ndarray:
-    #     """
-    #     Get the parameters of the MPC.
-
-    #     :return: the parameters
-    #     """
     def get_parameters(self) -> np.ndarray:
         return self.get_p()
 
@@ -43,9 +37,6 @@ class MPC(ABC):
         # Set initial state
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
-
-        # self.nlp.set(0, "lbx", x0)
-        # self.nlp.set(0, "ubx", x0)
 
         # Solve the optimization problem
         self.status = self.ocp_solver.solve()
@@ -163,10 +154,15 @@ class MPC(ABC):
         # self.update_nlp()
 
     def get_p(self) -> np.ndarray:
-        # return self.nlp.vars.val["p"].full().flatten()
+        """
+        Get the value of the parameters for the nlp.
+        """
         return self.nlp.p.val.cat.full().flatten()
 
     def get_parameter_values(self) -> np.ndarray:
+        """
+        Get the value of the parameters for the nlp.
+        """
         return self.get_p()
 
     def get_parameter_labels(self) -> list:
@@ -195,19 +191,8 @@ class MPC(ABC):
         self.nlp.set(0, "lbx", x0)
         self.nlp.set(0, "ubx", x0)
 
-        # self.nlp.lbw.val["lbx", 0] = x0
-        # self.nlp.ubw.val["ubx", 0] = x0
-
-        # Set initial action (needed for state-action value)
-        # u0 = np.zeros((self.ocp.dims.nu,))
-        # self.ocp_solver.set(0, "u", u0)
-        # self.ocp_solver.set(0, "lbu", u0)
-        # self.ocp_solver.set(0, "ubu", u0)
-
         # Solve the optimization problem
         status = self.ocp_solver.solve()
-
-        # Plot prediction
 
         if status != 0:
             raise RuntimeError(f"Solver failed update with status {status}. Exiting.")
@@ -228,6 +213,7 @@ class MPC(ABC):
         if field == "p":
             p_temp = self.nlp.p.sym(value)
             if not finite_differences:
+                # TODO: This allows to set parameters in the NLP but not in the OCP solver. This can be a problem.
                 for key in p_temp.keys():
                     self.nlp.set_parameter(key, p_temp[key])
 
@@ -282,10 +268,6 @@ class MPC(ABC):
 
         self.discount_factor = discount_factor_
         self.nlp.set_constant("gamma", discount_factor_)
-
-        # stage_ = 1
-        # field_ = "W"
-        # value_ = np.identity(5)
 
         field_ = "scaling"
 
