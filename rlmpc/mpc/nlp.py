@@ -988,11 +988,6 @@ def build_nlp(ocp: AcadosOcp, gamma: float = 1.0, parameterize_tracking_cost=Fal
 
     p = struct_symSX(p_entries)
 
-    # entries["variables"].append(entry("p", struct=struct_symSX([tuple(entry("model", struct=ocp.model.p))])))
-    # entries["variables"].append(entry("p", struct=struct_symSX(get_parameter_labels(ocp))))
-
-    # print(entries["variables"]["p"])
-
     # Equality constraints
     vars = struct_symSX([tuple(entries["variables"])])
 
@@ -1343,9 +1338,7 @@ def print_nlp_vars(nlp: NLP):
         print(f"{nlp.vars.val.cat[i]} <-- {nlp.vars.sym.cat[i]}")
 
 
-def update_nlp(
-    nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 1, log_timing: bool = False
-) -> tuple[NLP, dict[float]]:
+def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 1) -> tuple[NLP, dict[float]]:
     """
     Update the NLP with the solution of the OCP solver.
 
@@ -1370,7 +1363,6 @@ def update_nlp(
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "lam", ocp_solver.get(stage, "lam"))
 
-    # NOTE: New to fix singularity issue
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "t", ocp_solver.get(stage, "t"))
 
@@ -1403,15 +1395,15 @@ def update_nlp(
     nlp.dL_dx.val = nlp.dL_dx.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
 
     timing = {}
-    start_time = time.time()
+
     # Compute value gradient
+    start_time = time.time()
     nlp.dL_dp.val = nlp.dL_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val)
     timing["dL_dp"] = time.time() - start_time
 
     # Compute policy gradient
-    nlp.R.val = nlp.R.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val, nlp.t.val)
-
     start_time = time.time()
+    nlp.R.val = nlp.R.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val, nlp.t.val)
     nlp.dR_dp.val = nlp.dR_dp.fun(nlp.vars.val, nlp.p.val, nlp.pi.val, nlp.lam.val, nlp.t.val)
     timing["lin_params"] = time.time() - start_time
 
@@ -1421,20 +1413,12 @@ def update_nlp(
     dR_dp = nlp.dR_dp.val.full()
     dR_dz = nlp.dR_dz.val.full()
 
-    # dz_dp = spla.bicg(dR_dz, -dR_dp, atol=1e-6, tol=1e-6)
-
     A = csc_matrix(dR_dz)
     b = csc_matrix(-dR_dp)
 
     dz_dp = splinalg.spsolve(A, b)
 
-    # dz_dp = np.linalg.solve(nlp.dR_dz.val.full(), -nlp.dR_dp.val.full())
-    # dR_dz_inv = np.linalg.inv(nlp.dR_dz.val.full())
-    # timing["dR_dz_inv"] = time.time() - start_time
-
-    # start_time = time.time()
     nlp.dpi_dp.val = dz_dp[: ocp_solver.acados_ocp.dims.nu, :]
-    # nlp.dpi_dp.val = (-dR_dz_inv @ nlp.dR_dp.val.full())[: ocp_solver.acados_ocp.dims.nu, :]
     timing["solve_params"] = time.time() - start_time
 
     nlp.dpi_dp.val = nlp.dpi_dp.val.toarray()
