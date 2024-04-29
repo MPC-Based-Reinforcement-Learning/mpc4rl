@@ -32,12 +32,14 @@ class AcadosMPC(MPC):
 
 
 def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
-    ocp, _ = export_parametric_ocp(chain_params_=param, integrator_type="DISCRETE")
+    # ocp, _ = export_parametric_ocp(chain_params_=param, integrator_type="DISCRETE")
 
-    ocp.solver_options.sim_method_num_stages = 4
-    ocp.solver_options.sim_method_num_steps = 1
+    ocp, _ = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=0, integrator_type="DISCRETE")
 
     ocp_json_file = "acados_ocp_" + ocp.model.name + ".json"
 
-    return AcadosOcpSolver(ocp, json_file=ocp_json_file, build=True, generate=True)
+    # ocp.solver_options.sim_method_num_stages = 4
+    # ocp.solver_options.sim_method_num_steps = 1
+    # ocp_json_file = "acados_ocp_" + ocp.model.name + ".json"
 
+    return AcadosOcpSolver(ocp, json_file=ocp_json_file, build=True, generate=True)

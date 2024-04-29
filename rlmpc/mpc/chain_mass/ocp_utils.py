@@ -374,4 +374,3 @@ def define_param_struct_symSX(n_mass: int, disturbance: bool = True) -> DMStruct
 def find_idx_for_labels(sub_vars: ca.SX, sub_label: str) -> list[int]:
     """Return a list of indices where sub_label is part of the variable label."""
     return [i for i, label in enumerate(sub_vars.str().strip("[]").split(", ")) if sub_label in label]
-
