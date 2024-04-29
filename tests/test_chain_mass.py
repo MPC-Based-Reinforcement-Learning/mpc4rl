@@ -1,8 +1,8 @@
-from rlmpc.examples.chain_mass import main
+from rlmpc.examples.chain_mass import main_nlp
 
 
 def test_main():
-    main(np_test=10, plot=False, save_timings=False)
+    main_nlp(np_test=10, plot=False, save_timings=False)
     assert True
 
 
