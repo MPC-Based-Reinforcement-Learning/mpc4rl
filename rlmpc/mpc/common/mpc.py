@@ -91,7 +91,7 @@ class MPC(ABC):
             raise RuntimeError(f"Solver failed q_update with status {status}. Exiting.")
             exit(0)
 
-        self.nlp = update_nlp(self.nlp, self.ocp_solver)
+        self.nlp, _ = update_nlp(self.nlp, self.ocp_solver)
 
         self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
         self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
