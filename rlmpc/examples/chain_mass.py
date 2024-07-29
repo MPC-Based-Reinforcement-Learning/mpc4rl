@@ -65,7 +65,11 @@ def plot_results(p_label, p_var, sens_u, u_opt):
 
 
 def main_acados(
-    qp_solver_ric_alg: int = 0, chain_params_: dict = get_chain_params(), generate_code: bool = True, np_test: int = 100
+    qp_solver_ric_alg: int = 0,
+    chain_params_: dict = get_chain_params(),
+    generate_code: bool = True,
+    np_test: int = 100,
+    plot: bool = True,
 ) -> None:
     ocp, parameter_values = export_parametric_ocp(
         chain_params_=chain_params_, qp_solver_ric_alg=qp_solver_ric_alg, integrator_type="DISCRETE"
@@ -127,10 +131,11 @@ def main_acados(
 
         sens_u.append(sens_u_[:, p_idx])
 
-    plot_results(p_label, p_var, sens_u, u_opt)
+    if plot:
+        plot_results(p_label, p_var, sens_u, u_opt)
 
 
-def main_nlp(chain_params_=get_chain_params(), np_test: int = 100, plot: bool = True, save_timings: bool = True):
+def main_nlp(chain_params_=get_chain_params(), np_test: int = 100, plot: bool = True):
     discount_factor = 1.0
 
     fig_path = os.path.join(get_root_path(), "scripts", "figures")
@@ -171,7 +176,8 @@ def main_nlp(chain_params_=get_chain_params(), np_test: int = 100, plot: bool = 
     u_opt = np.vstack(u_opt)
     sens_u = np.vstack(sens_u)
 
-    plot_results(p_label, p_var, sens_u, u_opt)
+    if plot:
+        plot_results(p_label, p_var, sens_u, u_opt)
 
 
 if __name__ == "__main__":

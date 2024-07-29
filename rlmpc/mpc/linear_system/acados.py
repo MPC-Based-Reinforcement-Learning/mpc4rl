@@ -4,9 +4,9 @@ import casadi as cs
 
 from scipy.linalg import solve_discrete_are
 
-from rlmpc.mpc.common.mpc import MPC
+from rlmpc.mpc.common.mpc_nlp_sensitivities import MPC
 
-from rlmpc.mpc.nlp import NLP, build_nlp
+from rlmpc.mpc.common.nlp import NLP, build_nlp
 
 
 class AcadosMPC(MPC):
@@ -17,7 +17,9 @@ class AcadosMPC(MPC):
     def __init__(self, param, discount_factor=0.99):
         super(AcadosMPC, self).__init__()
 
-        self.ocp_solver = setup_acados_ocp_solver(param)
+        self.ocp_solver = setup_acados_ocp_solver(param, integrator_type="DISCRETE")
+
+        self.ocp_sensitivity_solver = setup_acados_ocp_solver(param, hessian_approx="EXACT", integrator_type="DISCRETE")
 
         self.nlp = build_nlp(self.ocp_solver.acados_ocp, gamma=discount_factor)
 
@@ -70,10 +72,44 @@ def get_parameter(field, p):
         return cs.reshape(p[9:12], 3, 1)
 
 
-def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
+def setup_acados_ocp_solver(
+    param: dict,
+    qp_solver: str = "PARTIAL_CONDENSING_HPIPM",
+    hessian_approx: str = "GAUSS_NEWTON",
+    integrator_type: str = "IRK",
+    nlp_solver_type: str = "SQP",
+    name: str = "lti",
+) -> AcadosOcpSolver:
+    ocp = export_parametric_ocp(
+        param=param,
+        qp_solver=qp_solver,
+        hessian_approx=hessian_approx,
+        integrator_type=integrator_type,
+        nlp_solver_type=nlp_solver_type,
+        name=name,
+    )
+
+    ocp_solver = AcadosOcpSolver(ocp)
+
+    # TODO Is this necessary?
+    for stage in range(ocp.dims.N + 1):
+        ocp_solver.set(stage, "p", ocp.parameter_values)
+
+    return ocp_solver
+
+
+def export_parametric_ocp(
+    param: dict,
+    qp_solver_ric_alg: int = 0,
+    qp_solver: str = "PARTIAL_CONDENSING_HPIPM",
+    hessian_approx: str = "GAUSS_NEWTON",
+    integrator_type: str = "IRK",
+    nlp_solver_type: str = "SQP",
+    name: str = "lti",
+) -> AcadosOcp:
     ocp = AcadosOcp()
 
-    ocp.model.name = "lti"
+    ocp.model.name = name
 
     ocp.model.x = cs.SX.sym("x", 2)
     ocp.model.u = cs.SX.sym("u", 1)
@@ -123,9 +159,4 @@ def setup_acados_ocp_solver(param: dict) -> AcadosOcpSolver:
     ocp.solver_options.nlp_solver_type = "SQP"
     ocp.solver_options.hessian_approx = "EXACT"
 
-    ocp_solver = AcadosOcpSolver(ocp)
-
-    for stage in range(ocp.dims.N + 1):
-        ocp_solver.set(stage, "p", ocp.parameter_values)
-
-    return ocp_solver
+    return ocp
