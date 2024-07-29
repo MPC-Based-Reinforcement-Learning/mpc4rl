@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "rlmpc"
 version = "2024.0.0"
 dependencies = [
+  "numpy<2.0.0",
   "gymnasium",
   "stable_baselines3",
   "tqdm",
