@@ -1,7 +1,7 @@
 import casadi as cs
 import numpy as np
 import time
-from typing import Union, Tuple
+from typing import Union
 from casadi.tools import struct_symSX, entry
 from acados_template import AcadosOcp, AcadosOcpSolver
 
@@ -9,7 +9,7 @@ from rlmpc.common.utils import ACADOS_MULTIPLIER_ORDER
 
 from matplotlib import pyplot as plt
 
-from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse import csc_matrix
 
 import scipy.sparse.linalg as splinalg
 
@@ -1338,7 +1338,7 @@ def print_nlp_vars(nlp: NLP):
         print(f"{nlp.vars.val.cat[i]} <-- {nlp.vars.sym.cat[i]}")
 
 
-def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 1) -> tuple[NLP, dict[float]]:
+def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 0) -> tuple[NLP, dict[float]]:
     """
     Update the NLP with the solution of the OCP solver.
 
@@ -1363,6 +1363,8 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 1) -> t
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "lam", ocp_solver.get(stage, "lam"))
 
+    # TODO: getter got removed from acados with PR #1148 (commit 23bedb3, June 2024). Breaking change. Reconstruct t from inequality constraints or return
+    # error that this code requires an older acados version.
     for stage in range(ocp_solver.acados_ocp.dims.N + 1):
         nlp.set(stage, "t", ocp_solver.get(stage, "t"))
 
@@ -1375,6 +1377,9 @@ def update_nlp(nlp: NLP, ocp_solver: AcadosOcpSolver, print_level: int = 1) -> t
     nlp.set(0, "ubx", ocp_solver.get(0, "x"))
 
     nlp.lam.val = cs.vertcat(*list(nlp.lam_dict.values()))
+
+    # TODO: getter got removed from acados with PR #1148 (commit 23bedb3, June 2024). Breaking change. Reconstruct t from inequality constraints or return
+    # error that this code requires an older acados version.
     nlp.t.val = cs.vertcat(*list(nlp.t_dict.values()))
 
     # for i in range(nlp.lam.sym.shape[0]):

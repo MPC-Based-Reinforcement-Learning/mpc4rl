@@ -3,8 +3,8 @@
 from acados_template import AcadosOcpSolver
 # import casadi as cs
 
-from rlmpc.mpc.common.mpc import MPC
-from rlmpc.mpc.nlp import NLP, build_nlp
+from mpc.common.mpc_nlp_sensitivities import MPC
+from mpc.common.nlp import NLP, build_nlp
 
 from .ocp_utils import (
     # get_chain_params,

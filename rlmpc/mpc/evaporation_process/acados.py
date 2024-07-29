@@ -4,9 +4,9 @@ from acados_template import AcadosOcp, AcadosOcpSolver
 import casadi as cs
 
 
-from rlmpc.mpc.common.mpc import MPC
+from mpc.common.mpc_nlp_sensitivities import MPC
 
-from rlmpc.mpc.nlp import NLP, build_nlp
+from mpc.common.nlp import NLP, build_nlp
 
 from rlmpc.gym.evaporation_process.environment import compute_data
 

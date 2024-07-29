@@ -14,7 +14,7 @@ from acados_template import (
 
 import casadi as cs
 
-from rlmpc.mpc.common.mpc import MPC
+from mpc.common.mpc_nlp_sensitivities import MPC
 
 import matplotlib.pyplot as plt
 
@@ -22,7 +22,7 @@ from rlmpc.mpc.cartpole.common import Config, ModelParams, define_parameter_valu
 
 from rlmpc.common.integrator import ERK4
 
-from rlmpc.mpc.nlp import NLP, build_nlp
+from mpc.common.nlp import NLP, build_nlp
 
 
 def define_acados_model(ocp: AcadosOcp, config: dict) -> AcadosModel:
