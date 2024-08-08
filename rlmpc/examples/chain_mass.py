@@ -8,21 +8,9 @@ from rlmpc.mpc.chain_mass.ocp_utils import (
     get_chain_params,
     find_idx_for_labels,
     define_param_struct_symSX,
-    export_parametric_ocp,
+    define_x0,
 )
 from rlmpc.mpc.chain_mass.acados import AcadosMPC
-from acados_template import AcadosOcpSolver, AcadosOcp
-
-
-def define_x0(chain_params_: dict, ocp: AcadosOcp):
-    M = chain_params_["n_mass"] - 2
-
-    xEndRef = np.zeros((3, 1))
-    xEndRef[0] = chain_params_["L"] * (M + 1) * 6
-    pos0_x = np.linspace(chain_params_["xPosFirstMass"][0], xEndRef[0], M + 2)
-    x0 = np.zeros((ocp.dims.nx, 1))
-    x0[: 3 * (M + 1) : 3] = np.reshape(pos0_x[1:], ((M + 1, 1)))
-    return M, x0
 
 
 def plot_results(p_label, p_var, sens_u, u_opt):
@@ -65,69 +53,63 @@ def plot_results(p_label, p_var, sens_u, u_opt):
 
 
 def main_acados(
-    qp_solver_ric_alg: int = 0,
     chain_params_: dict = get_chain_params(),
     generate_code: bool = True,
+    build_code: bool = True,
     np_test: int = 100,
     plot: bool = True,
 ) -> None:
-    ocp, parameter_values = export_parametric_ocp(
-        chain_params_=chain_params_, qp_solver_ric_alg=qp_solver_ric_alg, integrator_type="DISCRETE"
-    )
+    kwargs = {
+        "ocp_solver": {
+            "json_file": f"acados_ocp_nlp_chain_mass_ds_{chain_params_['n_mass']}.json",
+            "generate": generate_code,
+            "build": build_code,
+        },
+        "ocp_sensitivity_solver": {
+            "json_file": f"acados_ocp_nlp_chain_mass_ds_{chain_params_['n_mass']}_sensitivity.json",
+            "generate": generate_code,
+            "build": build_code,
+        },
+    }
 
-    ocp_json_file = "acados_ocp_" + ocp.model.name + ".json"
+    mpc = AcadosMPC(param=chain_params_, **kwargs)
 
-    # Check if json_file exists
-    if not generate_code and os.path.exists(ocp_json_file):
-        ocp_solver = AcadosOcpSolver(ocp, json_file=ocp_json_file, build=False, generate=False)
-    else:
-        ocp_solver = AcadosOcpSolver(ocp, json_file=ocp_json_file)
+    ocp_solver = mpc.ocp_solver
 
-    sensitivity_ocp, _ = export_parametric_ocp(
-        chain_params_=chain_params_,
-        qp_solver_ric_alg=qp_solver_ric_alg,
-        hessian_approx="EXACT",
-        integrator_type="DISCRETE",
-    )
-    sensitivity_ocp.model.name = f"{ocp.model.name}_sensitivity"
+    parameter_values = mpc.ocp_solver.acados_ocp.parameter_values
 
-    ocp_json_file = "acados_sensitivity_ocp_" + sensitivity_ocp.model.name + ".json"
-    # Check if json_file exists
-    if not generate_code and os.path.exists(ocp_json_file):
-        sensitivity_solver = AcadosOcpSolver(sensitivity_ocp, json_file=ocp_json_file, build=False, generate=False)
-    else:
-        sensitivity_solver = AcadosOcpSolver(sensitivity_ocp, json_file=ocp_json_file)
-
-    M, x0 = define_x0(chain_params_, ocp)
+    M, x0 = define_x0(chain_params_, ocp_solver.acados_ocp)
 
     p_label = f"C_{M}_0"
+    # p_label = "Q_0"
+
+    # p_sym = define_param_struct_symSX(chain_params_["n_mass"], disturbance=True)
 
     p_idx = find_idx_for_labels(define_param_struct_symSX(chain_params_["n_mass"], disturbance=True).cat, p_label)[0]
 
-    p_var = np.linspace(0.5 * parameter_values.cat[p_idx], 1.5 * parameter_values.cat[p_idx], np_test).flatten()
+    p_var = np.linspace(0.5 * parameter_values[p_idx], 1.5 * parameter_values[p_idx], np_test)
 
     sens_u = []
     u_opt = []
 
     for i in range(np_test):
-        parameter_values.cat[p_idx] = p_var[i]
+        parameter_values[p_idx] = p_var[i]
 
-        p_val = parameter_values.cat.full().flatten()
-        for stage in range(ocp.dims.N + 1):
-            ocp_solver.set(stage, "p", p_val)
-            sensitivity_solver.set(stage, "p", p_val)
+        for stage in range(ocp_solver.acados_ocp.dims.N + 1):
+            mpc.ocp_solver.set(stage, "p", parameter_values)
+            mpc.ocp_sensitivity_solver.set(stage, "p", parameter_values)
 
-        u_opt.append(ocp_solver.solve_for_x0(x0))
-        print(f"ocp_solver status {ocp_solver.status}")
+        u_opt.append(mpc.ocp_solver.solve_for_x0(x0))
+        print(f"ocp_solver status {mpc.ocp_solver.status}")
 
-        ocp_solver.store_iterate(filename="iterate.json", overwrite=True, verbose=False)
-        sensitivity_solver.load_iterate(filename="iterate.json", verbose=False)
-        sensitivity_solver.solve_for_x0(x0, fail_on_nonzero_status=False, print_stats_on_failure=False)
+        mpc.ocp_solver.store_iterate(filename="iterate.json", overwrite=True, verbose=False)
+        mpc.ocp_sensitivity_solver.load_iterate(filename="iterate.json", verbose=False)
+        mpc.ocp_sensitivity_solver.solve_for_x0(x0, fail_on_nonzero_status=False, print_stats_on_failure=False)
 
-        print(f"sensitivity_solver status {sensitivity_solver.status}")
+        print(f"sensitivity_solver status {mpc.ocp_sensitivity_solver.status}")
 
         # Calculate the policy gradient
-        _, sens_u_ = sensitivity_solver.eval_solution_sensitivity(0, "params_global")
+        _, sens_u_ = mpc.ocp_sensitivity_solver.eval_solution_sensitivity(0, "params_global")
 
         sens_u.append(sens_u_[:, p_idx])
 
@@ -185,6 +167,6 @@ if __name__ == "__main__":
 
     for n_mass in [3]:
         params["n_mass"] = n_mass
-        main_nlp(chain_params_=params, np_test=20)
-        main_acados(chain_params_=params, np_test=20)
+        # main_nlp(chain_params_=params, np_test=20)
+        main_acados(chain_params_=params, np_test=20, generate_code=False)
         plt.show()

@@ -1,7 +1,8 @@
 import numpy as np
 from abc import ABC
 from acados_template import AcadosOcp, AcadosOcpSolver
-from mpc.common.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
+from rlmpc.mpc.common.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
+from rlmpc.mpc.common.acados import set_discount_factor
 from ctypes import POINTER, c_double, c_int, c_void_p, cast
 
 
@@ -11,10 +12,11 @@ class MPC(ABC):
     """
 
     ocp: AcadosOcp
-    nlp: NLP
+    # nlp: NLP
     ocp_solver: AcadosOcpSolver
+    ocp_sensitivity_solver: AcadosOcpSolver
 
-    def __init__(self, gamma: float = 1.0):
+    def __init__(self, gamma: float = 1.0, **kwargs):
         super().__init__()
 
         self.discount_factor = gamma
@@ -63,17 +65,11 @@ class MPC(ABC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        # TODO: Implement this through nlp.set
-        self.nlp.vars.val["lbx_0"] = x0
-        self.nlp.vars.val["ubx_0"] = x0
-
         # Set initial action (needed for state-action value)
         self.ocp_solver.set(0, "u", u0)
+
         self.ocp_solver.constraints_set(0, "lbu", u0)
         self.ocp_solver.constraints_set(0, "ubu", u0)
-
-        self.nlp.set(0, "lbu", u0)
-        self.nlp.set(0, "ubu", u0)
 
         # Solve the optimization problem
         status = self.ocp_solver.solve()
@@ -82,16 +78,9 @@ class MPC(ABC):
             raise RuntimeError(f"Solver failed q_update with status {status}. Exiting.")
             exit(0)
 
-        self.nlp, _ = update_nlp(self.nlp, self.ocp_solver)
-
+        # Change bounds back to original
         self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
         self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
-
-        # Change bounds back to original
-        self.nlp.set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
-        self.nlp.set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
-
-        # test_nlp_sanity(self.nlp)
 
         return status
 
@@ -132,32 +121,26 @@ class MPC(ABC):
         Returns:
             dQ_dp: Sensitivity of the state-action value function with respect to the parameters.
         """
-        return self.get_dL_dp()
+        # TODO: Implement this
+        pass
 
-    def set_p(self, p: np.ndarray, finite_differences: bool = False) -> None:
+    def set_p(self, p: np.ndarray) -> None:
         """
         Set the value of the parameters.
 
         Args:
             p: Parameters.
         """
-        # self._parameters = theta
-        # self.ocp_solver.set(0, "p", theta)
-        # self.nlp.p.val = theta
-
+        self.ocp_solver.acados_ocp.parameter_values = p
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
-            self.set(stage, "p", p, finite_differences=finite_differences)
-
-        # self.nlp.p.val = p
-        # self.nlp.vars.val["p"] = p
-
-        # self.update_nlp()
+            self.ocp_solver.set(stage, "p", p)
+            self.ocp_sensitivity_solver.set(stage, "p", p)
 
     def get_p(self) -> np.ndarray:
         """
         Get the value of the parameters for the nlp.
         """
-        return self.nlp.p.val.cat.full().flatten()
+        return self.ocp_solver.acados_ocp.parameter_values
 
     def get_parameter_values(self) -> np.ndarray:
         """
@@ -188,9 +171,6 @@ class MPC(ABC):
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
 
-        self.nlp.set(0, "lbx", x0)
-        self.nlp.set(0, "ubx", x0)
-
         # Solve the optimization problem
         status = self.ocp_solver.solve()
 
@@ -203,29 +183,34 @@ class MPC(ABC):
 
     def reset(self, x0: np.ndarray):
         self.ocp_solver.reset()
-        self.set_discount_factor(self.discount_factor)
+
+        set_discount_factor(self.ocp_solver, self.discount_factor)
+        set_discount_factor(self.ocp_sensitivity_solver, self.discount_factor)
 
         for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
             # self.ocp_solver.set(stage, "x", self.ocp_solver.acados_ocp.constraints.lbx_0)
             self.ocp_solver.set(stage, "x", x0)
+            self.ocp_sensitivity_solver.set(stage, "x", x0)
 
-    def set(self, stage, field, value, finite_differences: bool = False):
+    def set(self, stage, field, value):
         if field == "p":
-            p_temp = self.nlp.p.sym(value)
-            if not finite_differences:
-                # TODO: This allows to set parameters in the NLP but not in the OCP solver. This can be a problem.
-                for key in p_temp.keys():
-                    self.nlp.set_parameter(key, p_temp[key])
+            # TODO: Implement this
+            pass
 
-            if self.ocp_solver.acados_ocp.dims.np > 0:
-                self.ocp_solver.set(stage, field, p_temp["model"].full().flatten())
+            # p_temp = self.nlp.p.sym(value)
+            # This allows to set parameters in the NLP but not in the OCP solver. This can be a problem.
+            # for key in p_temp.keys():
+            #     self.nlp.set_parameter(key, p_temp[key])
 
-                # if self.nlp.vars.val["p", "W_0"].shape[0] > 0:
-                #     p_temp = self.nlp.vars.sym(0)
-                #     self.ocp_solver.cost_set
-                #     # self.nlp.set(stage, field, value)
-                #     W_0 = self.nlp.vars.val["p", "W_0"].full()
-                #     print("Not implemented")
+            # if self.ocp_solver.acados_ocp.dims.np > 0:
+            #     self.ocp_solver.set(stage, field, p_temp["model"].full().flatten())
+
+            # if self.nlp.vars.val["p", "W_0"].shape[0] > 0:
+            #     p_temp = self.nlp.vars.sym(0)
+            #     self.ocp_solver.cost_set
+            #     # self.nlp.set(stage, field, value)
+            #     W_0 = self.nlp.vars.val["p", "W_0"].full()
+            #     print("Not implemented")
 
         else:
             self.ocp_solver.set(stage, field, value)
@@ -267,7 +252,6 @@ class MPC(ABC):
         # print(f"Setting discount factor to {discount_factor_}")
 
         self.discount_factor = discount_factor_
-        self.nlp.set_constant("gamma", discount_factor_)
 
         field_ = "scaling"
 
@@ -320,7 +304,7 @@ class MPC(ABC):
         Returns:
             dL_dp: Sensitivity of the Lagrangian with respect to the parameters.
         """
-        return self.nlp.dL_dp.val.full()
+        # TODO: Implement this or remove. Only need get_dV_dp and get_dQ_dp.
 
     def get_L(self) -> float:
         """
@@ -329,7 +313,7 @@ class MPC(ABC):
         Returns:
             L: Lagrangian.
         """
-        return float(self.nlp.L.val)
+        # TODO: Implement this
 
     def get_V(self) -> float:
         """
@@ -356,6 +340,8 @@ class MPC(ABC):
 
         Assumes OCP is solved for state and parameters.
         """
+
+        # TODO: Implement this using its own ocp_sensitivity_solver class
 
         pi0 = self.get_pi().copy()
 
@@ -406,9 +392,4 @@ class MPC(ABC):
         Assumes OCP is solved for state and parameters.
         """
 
-        if not finite_differences:
-            dpi_dp = self.nlp.dpi_dp.val
-        else:
-            dpi_dp = self.compute_dpi_dp_finite_differences(self.get_p(), idx=idx)
-
-        return dpi_dp
+        # TODO: Implement this using ocp_sensitivity_solver

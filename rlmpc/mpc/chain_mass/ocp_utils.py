@@ -39,6 +39,17 @@ from acados_template import AcadosModel, AcadosOcp
 # from export_chain_mass_model import export_chain_mass_model
 
 
+def define_x0(chain_params_: dict, ocp: AcadosOcp):
+    M = chain_params_["n_mass"] - 2
+
+    xEndRef = np.zeros((3, 1))
+    xEndRef[0] = chain_params_["L"] * (M + 1) * 6
+    pos0_x = np.linspace(chain_params_["xPosFirstMass"][0], xEndRef[0], M + 2)
+    x0 = np.zeros((ocp.dims.nx, 1))
+    x0[: 3 * (M + 1) : 3] = np.reshape(pos0_x[1:], ((M + 1, 1)))
+    return M, x0
+
+
 def export_discrete_erk4_integrator_step(
     f_expl: ca.SX, x: ca.SX, u: ca.SX, p: struct_symSX, h: float, n_stages: int = 2
 ) -> ca.SX:
@@ -199,7 +210,7 @@ def export_parametric_ocp(
     hessian_approx: str = "GAUSS_NEWTON",
     integrator_type: str = "IRK",
     nlp_solver_type: str = "SQP",
-    nlp_iter: int = 50,
+    nlp_iter: int = 200,
     nlp_tol: float = 1e-5,
     random_scale: dict = {"m": 0.0, "D": 0.0, "L": 0.0, "C": 0.0},
 ) -> Tuple[AcadosOcp, DMStruct]:
