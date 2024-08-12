@@ -51,7 +51,16 @@ class MPC(ABC):
 
         return action
 
-    def q_update(self, x0: np.ndarray, u0: np.ndarray) -> int:
+    def solve(self, store_iterate: bool = True, iterate_file: str = "iterate.json") -> int:
+        self.ocp_solver.solve()
+        self.ocp_solver.store_iterate(filename=iterate_file, overwrite=True, verbose=False)
+        # self.ocp_sensitivity_solver.load_iterate(filename=iterate_file, verbose=False)
+        # self.ocp_sensitivity_solver.solve()
+
+        # # _, sens_u_ = self.ocp_sensitivity_solver.eval_solution_sensitivity(0, "params_global")
+        # dVdp = self.ocp_sensitivity_solver.eval_and_get_optimal_value_gradient(with_respect_to = "params_global")
+
+    def q_update(self, x0: np.ndarray, u0: np.ndarray, p: np.ndarray = None) -> int:
         """
         Update the solution of the OCP solver.
 
@@ -61,9 +70,6 @@ class MPC(ABC):
         Returns:
             status: Status of the solver.
         """
-        # Set initial state
-        self.ocp_solver.set(0, "lbx", x0)
-        self.ocp_solver.set(0, "ubx", x0)
 
         # Set initial action (needed for state-action value)
         self.ocp_solver.set(0, "u", u0)
@@ -71,18 +77,58 @@ class MPC(ABC):
         self.ocp_solver.constraints_set(0, "lbu", u0)
         self.ocp_solver.constraints_set(0, "ubu", u0)
 
-        # Solve the optimization problem
-        status = self.ocp_solver.solve()
-
-        if status != 0:
-            raise RuntimeError(f"Solver failed q_update with status {status}. Exiting.")
-            exit(0)
+        optimal_value, optimal_value_gradient = self.v_update(x0, p)
 
         # Change bounds back to original
         self.ocp_solver.constraints_set(0, "lbu", self.ocp_solver.acados_ocp.constraints.lbu)
         self.ocp_solver.constraints_set(0, "ubu", self.ocp_solver.acados_ocp.constraints.ubu)
 
-        return status
+        return optimal_value, optimal_value_gradient
+
+    def v_update(self, x0: np.ndarray, p: np.ndarray = None) -> int:
+        if p is not None:
+            self.ocp_solver.acados_ocp.parameter_values = p
+            for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+                self.ocp_solver.set(stage, "p", p)
+
+        # Set initial state
+        self.ocp_solver.set(0, "lbx", x0)
+        self.ocp_solver.set(0, "ubx", x0)
+
+        # Solve the optimization problem
+        status = self.ocp_solver.solve()
+
+        optimal_value = self.ocp_solver.get_cost()
+
+        if status != 0:
+            raise RuntimeError(f"Solver failed with status {status}. Exiting.")
+
+        optimal_value_gradient = self.ocp_solver.eval_and_get_optimal_value_gradient(with_respect_to="params_global")
+
+        return optimal_value, optimal_value_gradient
+
+    def pi_update(self, x0: np.ndarray, p: np.ndarray = None) -> int:
+        if p is not None:
+            self.ocp_solver.acados_ocp.parameter_values = p
+            for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
+                self.ocp_solver.set(stage, "p", p)
+                self.ocp_sensitivity_solver.set(stage, "p", p)
+
+        # Set initial state
+        self.ocp_solver.set(0, "lbx", x0)
+        self.ocp_solver.set(0, "ubx", x0)
+
+        # Solve the optimization problem
+        pi = self.ocp_solver.solve_for_x0(x0)
+
+        self.ocp_solver.store_iterate(filename="iterate.json", overwrite=True, verbose=False)
+        self.ocp_sensitivity_solver.load_iterate(filename="iterate.json", verbose=False)
+        self.ocp_sensitivity_solver.solve_for_x0(x0, fail_on_nonzero_status=False, print_stats_on_failure=False)
+
+        # Calculate the policy gradient
+        _, dpidp = self.ocp_sensitivity_solver.eval_solution_sensitivity(0, "params_global")
+
+        return pi, dpidp
 
     def update_nlp(self) -> None:
         """

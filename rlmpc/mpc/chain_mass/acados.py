@@ -41,7 +41,7 @@ class AcadosMPC(MPC):
 def setup_acados_ocp_solver(param: dict, **kwargs) -> AcadosOcpSolver:
     # ocp, _ = export_parametric_ocp(chain_params_=param, integrator_type="DISCRETE")
 
-    ocp, _ = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=0, integrator_type="DISCRETE")
+    ocp, _ = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=1, integrator_type="DISCRETE")
 
     # ocp.solver_options.sim_method_num_stages = 4
     # ocp.solver_options.sim_method_num_steps = 1
@@ -50,6 +50,8 @@ def setup_acados_ocp_solver(param: dict, **kwargs) -> AcadosOcpSolver:
     # kwargs["json_file"] = ocp_json_file
     # kwargs["generate"] = False
     # kwargs["build"] = False
+
+    ocp.solver_options.with_value_sens_wrt_params = True
 
     # TODO: Check if we can also use the json_file to generate the ocp
     ocp_solver = AcadosOcpSolver(ocp, **kwargs)
@@ -82,6 +84,7 @@ def setup_ocp_sensitivity_solver(param: dict, **kwargs) -> AcadosOcpSolver:
     ocp.solver_options.qp_solver_ric_alg = 0
     ocp.solver_options.qp_solver_cond_N = ocp.dims.N
     ocp.solver_options.with_solution_sens_wrt_params = True
+    ocp.solver_options.with_value_sens_wrt_params = True
 
     ocp_sensitivity_solver = AcadosOcpSolver(ocp, **kwargs)
 

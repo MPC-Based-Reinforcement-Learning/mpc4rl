@@ -61,12 +61,12 @@ def main_acados(
 ) -> None:
     kwargs = {
         "ocp_solver": {
-            "json_file": f"acados_ocp_nlp_chain_mass_ds_{chain_params_['n_mass']}.json",
+            "json_file": f"acados_ocp_chain_mass_ds_{chain_params_['n_mass']}.json",
             "generate": generate_code,
             "build": build_code,
         },
         "ocp_sensitivity_solver": {
-            "json_file": f"acados_ocp_nlp_chain_mass_ds_{chain_params_['n_mass']}_sensitivity.json",
+            "json_file": f"acados_ocp_chain_mass_ds_{chain_params_['n_mass']}_sensitivity.json",
             "generate": generate_code,
             "build": build_code,
         },
@@ -74,11 +74,9 @@ def main_acados(
 
     mpc = AcadosMPC(param=chain_params_, **kwargs)
 
-    ocp_solver = mpc.ocp_solver
-
     parameter_values = mpc.ocp_solver.acados_ocp.parameter_values
 
-    M, x0 = define_x0(chain_params_, ocp_solver.acados_ocp)
+    M, x0 = define_x0(chain_params_, mpc.ocp_solver.acados_ocp)
 
     p_label = f"C_{M}_0"
     # p_label = "Q_0"
@@ -95,7 +93,7 @@ def main_acados(
     for i in range(np_test):
         parameter_values[p_idx] = p_var[i]
 
-        for stage in range(ocp_solver.acados_ocp.dims.N + 1):
+        for stage in range(mpc.ocp_solver.acados_ocp.dims.N + 1):
             mpc.ocp_solver.set(stage, "p", parameter_values)
             mpc.ocp_sensitivity_solver.set(stage, "p", parameter_values)
 
@@ -110,6 +108,8 @@ def main_acados(
 
         # Calculate the policy gradient
         _, sens_u_ = mpc.ocp_sensitivity_solver.eval_solution_sensitivity(0, "params_global")
+
+        mpc.ocp_sensitivity_solver.eval_and_get_optimal_value_gradient("params_global")
 
         sens_u.append(sens_u_[:, p_idx])
 
