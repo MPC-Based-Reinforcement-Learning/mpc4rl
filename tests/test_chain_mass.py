@@ -73,12 +73,18 @@ def test_q_update(
 ):
     mpc, x0, u0, p0 = set_up_mpc(generate_code, build_code, n_mass, json_file_prefix)
 
-    test_param, p_idx = set_up_test_parameters(n_mass, np_test, p0)
+    test_param = set_up_test_parameters(n_mass, np_test, p0)
 
+    absolute_difference = run_test_q_update_for_varying_parameters(mpc, x0, u0, test_param, plot)
+
+    assert np.median(absolute_difference) <= 1e-1
+
+
+def run_test_q_update_for_varying_parameters(mpc: AcadosMPC, x0, u0, test_param, plot: bool = False):
     # Evaluate q and dqdp using acados
     value = []
     value_gradient = []
-    for i in range(np_test):
+    for i in range(test_param.shape[1]):
         q_i, dqdp_i = mpc.q_update(x0=x0, u0=u0, p=test_param[:, i])
         value.append(q_i)
         value_gradient.append(dqdp_i)
@@ -86,11 +92,9 @@ def test_q_update(
     value_gradient = np.array(value_gradient)
 
     # Evaluate value and value_gradient using finite differences and compare
-    _, _, absolute_difference, _ = compare_acados_value_gradients_to_finite_differences(
-        test_param, p_idx, value, value_gradient, plot=plot
-    )
+    absolute_difference = compare_acados_value_gradients_to_finite_differences(test_param, value, value_gradient, plot=plot)
 
-    assert np.median(absolute_difference) <= 1e-1
+    return absolute_difference
 
 
 def test_v_update(
@@ -103,7 +107,17 @@ def test_v_update(
 ):
     mpc, x0, _, p0 = set_up_mpc(generate_code, build_code, n_mass, json_file_prefix)
 
-    test_param, p_idx = set_up_test_parameters(n_mass, np_test, p0)
+    test_param = set_up_test_parameters(n_mass, np_test, p0)
+
+    absolute_difference = run_v_update_for_varying_parameters(mpc, x0, test_param, plot)
+
+    assert np.median(absolute_difference) <= 1e-1
+
+
+def run_v_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, plot: bool = False):
+    np_test = test_param.shape[1]
+
+    parameter_index, _ = find_param_index_and_increment(test_param)
 
     # Evaluate value and value_gradient using acados
     value = []
@@ -116,11 +130,9 @@ def test_v_update(
     value_gradient = np.array(value_gradient)
 
     # Evaluate v and dvdp using finite differences and compare
-    _, _, absolute_difference, _ = compare_acados_value_gradients_to_finite_differences(
-        test_param, p_idx, value, value_gradient, plot=plot
-    )
+    absolute_difference = compare_acados_value_gradients_to_finite_differences(test_param, value, value_gradient, plot=plot)
 
-    assert np.median(absolute_difference) <= 1e-1
+    return absolute_difference
 
 
 def test_pi_update(
@@ -133,9 +145,28 @@ def test_pi_update(
 ):
     mpc, x0, _, p0 = set_up_mpc(generate_code, build_code, n_mass, json_file_prefix)
 
-    test_param, parameter_index = set_up_test_parameters(n_mass, np_test, p0)
+    test_param = set_up_test_parameters(n_mass, np_test, p0)
 
+    absolute_difference = run_test_pi_update_for_varying_parameters(mpc, x0, test_param, plot)
+
+    assert np.median(absolute_difference) <= 1e-1
+
+
+def find_param_index_and_increment(test_param):
+    parameter_increment = test_param[:, 1] - test_param[:, 0]
+
+    # Find index of nonzero element in parameter_increment
+    parameter_index = np.where(parameter_increment != 0)[0][0]
+
+    return parameter_index, parameter_increment
+
+
+def run_test_pi_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, plot: bool = False):
     # Evaluate v and dvdp using acados
+    np_test = test_param.shape[1]
+
+    parameter_index, parameter_increment = find_param_index_and_increment(test_param)
+
     policy = []
     policy_gradient = []
     for i in range(np_test):
@@ -150,24 +181,22 @@ def test_pi_update(
 
     # Evaluate pi and dpidp using finite differences and compare
     # Assumes a constant parameter increment
-    parameter_increment = test_param[:, 1] - test_param[:, 0]
-
     dp = parameter_increment[parameter_index]
     policy_gradient_finite_differences, _ = np.gradient(policy, dp)
 
-    reconstructed_policy = np.cumsum(policy_gradient_acados * dp, axis=0)
-    reconstructed_policy += policy[0] - reconstructed_policy[0]
-
     absolute_difference = np.abs(policy_gradient_finite_differences - policy_gradient_acados)
 
-    # Avoid division by zero when policy_gradient_acados is zero
-    relative_difference = np.zeros_like(absolute_difference)
-    for i in range(np_test):
-        for j in range(mpc.ocp_solver.acados_ocp.dims.nu):
-            if np.abs(policy_gradient_acados[i, j]) > 1e-10:
-                relative_difference[i, j] = absolute_difference[i, j] / np.abs(policy_gradient_acados[i, j])
-
     if plot:
+        reconstructed_policy = np.cumsum(policy_gradient_acados * dp, axis=0)
+        reconstructed_policy += policy[0] - reconstructed_policy[0]
+
+        # Avoid division by zero when policy_gradient_acados is zero
+        relative_difference = np.zeros_like(absolute_difference)
+        for i in range(np_test):
+            for j in range(mpc.ocp_solver.acados_ocp.dims.nu):
+                if np.abs(policy_gradient_acados[i, j]) > 1e-10:
+                    relative_difference[i, j] = absolute_difference[i, j] / np.abs(policy_gradient_acados[i, j])
+
         fig, ax = plt.subplots(4, mpc.ocp_solver.acados_ocp.dims.nu, figsize=(10, 20))
         for i in range(mpc.ocp_solver.acados_ocp.dims.nu):
             ax[0, i].plot(policy[:, i], label="policy")
@@ -182,26 +211,25 @@ def test_pi_update(
         plt.legend()
         plt.show()
 
-    assert np.median(absolute_difference) <= 1e-1
+    return absolute_difference
 
 
-def compare_acados_value_gradients_to_finite_differences(
-    test_param, parameter_index, values, value_gradient_acados, plot: bool = True
-):
+def compare_acados_value_gradients_to_finite_differences(test_param, values, value_gradient_acados, plot: bool = True):
     # Assumes a constant parameter increment
-    parameter_increment = test_param[:, 1] - test_param[:, 0]
+    parameter_index, parameter_increment = find_param_index_and_increment(test_param)
 
     value_gradient_finite_differences = np.gradient(values, parameter_increment[parameter_index])
-
-    reconstructed_values = np.cumsum(value_gradient_acados @ parameter_increment)
-    reconstructed_values += values[0] - reconstructed_values[0]
 
     absolute_difference = np.abs(
         np.gradient(values, parameter_increment[parameter_index]) - value_gradient_acados[:, parameter_index]
     )
-    relative_difference = absolute_difference / np.abs(value_gradient_acados[:, parameter_index])
 
     if plot:
+        reconstructed_values = np.cumsum(value_gradient_acados @ parameter_increment)
+        reconstructed_values += values[0] - reconstructed_values[0]
+
+        relative_difference = absolute_difference / np.abs(value_gradient_acados[:, parameter_index])
+
         plt.figure()
         plt.subplot(4, 1, 1)
         plt.plot(values, label="original values")
@@ -216,7 +244,7 @@ def compare_acados_value_gradients_to_finite_differences(
         plt.legend()
         plt.show()
 
-    return value_gradient_finite_differences, reconstructed_values, absolute_difference, relative_difference
+    return absolute_difference
 
 
 def set_up_test_parameters(n_mass, np_test, p0):
@@ -228,7 +256,7 @@ def set_up_test_parameters(n_mass, np_test, p0):
     p_sym = define_param_struct_symSX(n_mass, disturbance=True)
     p_idx = find_idx_for_labels(p_sym.cat, p_label)[0]
     test_param[p_idx, :] = np.linspace(0.5 * parameter_values[p_idx], 1.5 * parameter_values[p_idx], np_test)
-    return test_param, p_idx
+    return test_param
 
 
 def build_mpc_args(generate_code, build_code, n_mass, json_file_prefix):
@@ -252,4 +280,5 @@ def build_mpc_args(generate_code, build_code, n_mass, json_file_prefix):
 
 if __name__ == "__main__":
     # test_AcadosMPC_initializes()
-    test_pi_update(generate_code=False, build_code=False)
+    # test_pi_update(generate_code=False, build_code=False)
+    test_q_update(generate_code=False, build_code=False, plot=True)
