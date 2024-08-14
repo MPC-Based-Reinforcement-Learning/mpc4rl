@@ -35,6 +35,8 @@ from casadi.tools import struct_symSX, entry
 from typing import Tuple
 from acados_template import AcadosModel, AcadosOcp
 
+from rlmpc.mpc.common.ocp_utils import export_discrete_erk4_integrator_step
+
 
 # from export_chain_mass_model import export_chain_mass_model
 
@@ -50,24 +52,7 @@ def define_x0(chain_params_: dict, ocp: AcadosOcp):
     return M, x0
 
 
-def export_discrete_erk4_integrator_step(
-    f_expl: ca.SX, x: ca.SX, u: ca.SX, p: struct_symSX, h: float, n_stages: int = 2
-) -> ca.SX:
-    """Define ERK4 integrator for continuous dynamics."""
-    dt = h / n_stages
-    ode = ca.Function("f", [x, u, p], [f_expl])
-    xnext = x
-    for _ in range(n_stages):
-        k1 = ode(xnext, u, p)
-        k2 = ode(xnext + dt / 2 * k1, u, p)
-        k3 = ode(xnext + dt / 2 * k2, u, p)
-        k4 = ode(xnext + dt * k3, u, p)
-        xnext = xnext + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-
-    return xnext
-
-
-def export_chain_mass_model(n_mass: int, Ts: float = 0.2, disturbance: bool = False) -> Tuple[AcadosModel, DMStruct]:
+def export_chain_mass_model(n_mass: int, Ts: float = 0.2, disturbance: bool = False) -> AcadosModel:
     """Export chain mass model for acados."""
     x0 = np.array([0, 0, 0])  # fix mass (at wall)
 
@@ -81,6 +66,7 @@ def export_chain_mass_model(n_mass: int, Ts: float = 0.2, disturbance: bool = Fa
     xdot = ca.SX.sym("xdot", nx, 1)
 
     f = ca.SX.zeros(3 * M, 1)  # force on intermediate masses
+
     p = define_param_struct_symSX(n_mass=n_mass, disturbance=disturbance)
 
     # Gravity force
@@ -150,12 +136,10 @@ def export_chain_mass_model(n_mass: int, Ts: float = 0.2, disturbance: bool = Fa
     model.x = x
     model.xdot = xdot
     model.u = u
-    model.p = p.cat
+    model.p = p
     model.name = model_name
 
-    p_map = p(0)
-
-    return model, p_map
+    return model
 
 
 def compute_parametric_steady_state(
@@ -213,13 +197,15 @@ def export_parametric_ocp(
     nlp_iter: int = 200,
     nlp_tol: float = 1e-5,
     random_scale: dict = {"m": 0.0, "D": 0.0, "L": 0.0, "C": 0.0},
-) -> Tuple[AcadosOcp, DMStruct]:
+) -> AcadosOcp:
     # create ocp object to formulate the OCP
     ocp = AcadosOcp()
     ocp.dims.N = chain_params_["N"]
 
     # export model
-    ocp.model, p = export_chain_mass_model(n_mass=chain_params_["n_mass"], Ts=chain_params_["Ts"], disturbance=True)
+    ocp.model = export_chain_mass_model(n_mass=chain_params_["n_mass"], Ts=chain_params_["Ts"], disturbance=True)
+
+    p = ocp.model.p(0)
 
     # parameters
     np.random.seed(chain_params_["seed"])
@@ -274,21 +260,18 @@ def export_parametric_ocp(
     x_e = ocp.model.x - x_ss
     u_e = ocp.model.u - np.zeros((nu, 1))
 
-    idx = find_idx_for_labels(define_param_struct_symSX(chain_params_["n_mass"], disturbance=True).cat, "Q")
-    Q_sym = ca.reshape(ocp.model.p[idx], (nx, nx))
     q_diag = np.ones((nx, 1))
     q_diag[3 * M : 3 * M + 3] = M + 1
     p["Q"] = 2 * np.diagflat(q_diag)
 
-    idx = find_idx_for_labels(define_param_struct_symSX(chain_params_["n_mass"], disturbance=True).cat, "R")
-    R_sym = ca.reshape(ocp.model.p[idx], (nu, nu))
     p["R"] = 2 * np.diagflat(1e-2 * np.ones((nu, 1)))
 
-    ocp.model.cost_expr_ext_cost = 0.5 * (x_e.T @ Q_sym @ x_e + u_e.T @ R_sym @ u_e)
-    ocp.model.cost_expr_ext_cost_e = 0.5 * (x_e.T @ Q_sym @ x_e)
+    ocp.model.cost_expr_ext_cost = 0.5 * (x_e.T @ ocp.model.p["Q"] @ x_e + u_e.T @ ocp.model.p["R"] @ u_e)
+    ocp.model.cost_expr_ext_cost_e = 0.5 * (x_e.T @ ocp.model.p["Q"] @ x_e)
 
     ocp.model.cost_y_expr = ca.vertcat(x_e, u_e)
 
+    ocp.model.p = ocp.model.p.cat
     ocp.parameter_values = p.cat.full().flatten()
 
     # set constraints
@@ -324,7 +307,7 @@ def export_parametric_ocp(
 
     ocp.solver_options.tf = ocp.dims.N * chain_params_["Ts"]
 
-    return ocp, p
+    return ocp
 
 
 def get_chain_params():

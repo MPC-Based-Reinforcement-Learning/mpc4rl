@@ -1,5 +1,5 @@
 from rlmpc.common.utils import read_config
-from rlmpc.mpc.cartpole.acados import AcadosMPC
+from mpc.cartpole._acados import AcadosMPC
 import numpy as np
 import matplotlib.pyplot as plt
 import gymnasium as gym

@@ -19,7 +19,7 @@ class AcadosMPC(MPC):
 
 
 def setup_acados_ocp_solver(param: dict, **kwargs) -> AcadosOcpSolver:
-    ocp, _ = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=1, integrator_type="DISCRETE")
+    ocp = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=1, integrator_type="DISCRETE")
 
     ocp.solver_options.with_value_sens_wrt_params = True
 
@@ -34,7 +34,7 @@ def setup_acados_ocp_solver(param: dict, **kwargs) -> AcadosOcpSolver:
 
 
 def setup_ocp_sensitivity_solver(param: dict, **kwargs) -> AcadosOcpSolver:
-    ocp, _ = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=0, integrator_type="DISCRETE")
+    ocp = export_parametric_ocp(chain_params_=param, qp_solver_ric_alg=0, integrator_type="DISCRETE")
 
     ocp.code_export_directory = ocp.code_export_directory + "_sensitivity"
 

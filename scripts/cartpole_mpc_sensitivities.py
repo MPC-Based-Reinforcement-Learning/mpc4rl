@@ -1,5 +1,5 @@
 from rlmpc.common.utils import read_config
-from rlmpc.mpc.cartpole.acados import AcadosMPC
+from mpc.cartpole._acados import AcadosMPC
 from rlmpc.common.utils import get_root_path
 from tqdm import tqdm
 import numpy as np
@@ -96,8 +96,6 @@ def compute_value_functions_and_sensitivities(results: dict[dict], mpc: AcadosMP
         results["dpi_dp"]["true"][i] = mpc.get_dpi_dp()
 
     return results
-
-
 
 
 def main():

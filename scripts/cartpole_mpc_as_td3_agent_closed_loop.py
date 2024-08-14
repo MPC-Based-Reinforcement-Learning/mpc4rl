@@ -5,7 +5,7 @@ from rlmpc.common.utils import read_config
 
 from rlmpc.gym.continuous_cartpole.environment import ContinuousCartPoleSwingUpEnv  # noqa: F401
 
-from rlmpc.mpc.cartpole.acados import AcadosMPC
+from mpc.cartpole._acados import AcadosMPC
 
 import numpy as np
 
