@@ -109,12 +109,12 @@ def test_v_update(
 
     test_param = set_up_test_parameters(n_mass, np_test, p0)
 
-    absolute_difference = run_v_update_for_varying_parameters(mpc, x0, test_param, plot)
+    absolute_difference = run_test_v_update_for_varying_parameters(mpc, x0, test_param, plot)
 
     assert np.median(absolute_difference) <= 1e-1
 
 
-def run_v_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, plot: bool = False):
+def run_test_v_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, plot: bool = False):
     np_test = test_param.shape[1]
 
     parameter_index, _ = find_param_index_and_increment(test_param)
@@ -182,7 +182,7 @@ def run_test_pi_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, pl
     # Evaluate pi and dpidp using finite differences and compare
     # Assumes a constant parameter increment
     dp = parameter_increment[parameter_index]
-    policy_gradient_finite_differences, _ = np.gradient(policy, dp)
+    policy_gradient_finite_differences = np.gradient(policy, dp, axis=0)
 
     absolute_difference = np.abs(policy_gradient_finite_differences - policy_gradient_acados)
 
@@ -197,19 +197,34 @@ def run_test_pi_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, pl
                 if np.abs(policy_gradient_acados[i, j]) > 1e-10:
                     relative_difference[i, j] = absolute_difference[i, j] / np.abs(policy_gradient_acados[i, j])
 
-        fig, ax = plt.subplots(4, mpc.ocp_solver.acados_ocp.dims.nu, figsize=(10, 20))
-        for i in range(mpc.ocp_solver.acados_ocp.dims.nu):
-            ax[0, i].plot(policy[:, i], label="policy")
-            ax[0, i].plot(reconstructed_policy[:, i], label="reconstructed policy")
-            ax[1, i].plot(policy_gradient_acados[:, i], label="policy gradient via acados")
-            ax[1, i].plot(policy_gradient_finite_differences[:, i], label="policy gradient via finite differences")
-            ax[2, i].plot(absolute_difference[:, i], label="absolute difference")
-            ax[3, i].plot(relative_difference[:, i], label="relative difference")
-            for j in range(4):
-                ax[j, i].legend()
-                ax[j, i].grid()
-        plt.legend()
-        plt.show()
+        if mpc.ocp_solver.acados_ocp.dims.nu == 1:
+            fig, ax = plt.subplots(4, mpc.ocp_solver.acados_ocp.dims.nu, figsize=(10, 20))
+            for i in range(mpc.ocp_solver.acados_ocp.dims.nu):
+                ax[0].plot(policy, label="policy")
+                ax[0].plot(reconstructed_policy, label="reconstructed policy")
+                ax[1].plot(policy_gradient_acados, label="policy gradient via acados")
+                ax[1].plot(policy_gradient_finite_differences, label="policy gradient via finite differences")
+                ax[2].plot(absolute_difference, label="absolute difference")
+                ax[3].plot(relative_difference, label="relative difference")
+                for j in range(4):
+                    ax[j].legend()
+                    ax[j].grid()
+            plt.legend()
+            plt.show()
+        else:
+            fig, ax = plt.subplots(4, mpc.ocp_solver.acados_ocp.dims.nu, figsize=(10, 20))
+            for i in range(mpc.ocp_solver.acados_ocp.dims.nu):
+                ax[0, i].plot(policy[:, i], label="policy")
+                ax[0, i].plot(reconstructed_policy[:, i], label="reconstructed policy")
+                ax[1, i].plot(policy_gradient_acados[:, i], label="policy gradient via acados")
+                ax[1, i].plot(policy_gradient_finite_differences[:, i], label="policy gradient via finite differences")
+                ax[2, i].plot(absolute_difference[:, i], label="absolute difference")
+                ax[3, i].plot(relative_difference[:, i], label="relative difference")
+                for j in range(4):
+                    ax[j, i].legend()
+                    ax[j, i].grid()
+            plt.legend()
+            plt.show()
 
     return absolute_difference
 

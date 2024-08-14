@@ -1,162 +1,62 @@
-import numpy as np
-from acados_template import AcadosOcp, AcadosOcpSolver
-import casadi as cs
+from acados_template import AcadosOcpSolver
+from .ocp_utils import export_parametric_ocp
 
-from scipy.linalg import solve_discrete_are
 
-from rlmpc.mpc.common.mpc_nlp_sensitivities import MPC
-
-from rlmpc.mpc.common.nlp import NLP, build_nlp
+from rlmpc.mpc.common.mpc_acados_sensitivities import MPC
 
 
 class AcadosMPC(MPC):
     """docstring for MPC."""
 
-    nlp: NLP
+    ocp_solver: AcadosOcpSolver
+    ocp_sensitivity_solver: AcadosOcpSolver
 
-    def __init__(self, param, discount_factor=0.99):
+    def __init__(self, param, discount_factor=0.99, **kwargs):
         super(AcadosMPC, self).__init__()
 
-        self.ocp_solver = setup_acados_ocp_solver(param, integrator_type="DISCRETE")
+        ocp_solver_kwargs = kwargs["ocp_solver"] if "ocp_solver" in kwargs else {}
 
-        self.ocp_sensitivity_solver = setup_acados_ocp_solver(param, hessian_approx="EXACT", integrator_type="DISCRETE")
+        ocp_sensitivity_solver_kwargs = kwargs["ocp_sensitivity_solver"] if "ocp_sensitivity_solver" in kwargs else {}
 
-        self.nlp = build_nlp(self.ocp_solver.acados_ocp, gamma=discount_factor)
+        self.ocp_solver = setup_ocp_solver(param, **ocp_solver_kwargs)
+        self.ocp_sensitivity_solver = setup_ocp_sensitivity_solver(param, **ocp_sensitivity_solver_kwargs)
 
-        self.set_discount_factor(discount_factor)
-
-
-def disc_dyn_expr(x, u, param):
-    """
-    Define the discrete dynamics function expression.
-    """
-    return param["A"] @ x + param["B"] @ u + param["b"]
+        # self.ocp_sensitivity_solver = setup_ocp_sensitivity_solver(
+        #     self.ocp_solver, discount_factor=discount_factor, **ocp_sensitivity_solver_kwargs
+        # )
 
 
-def cost_expr_ext_cost(x, u, p):
-    """
-    Define the external cost function expression.
-    """
-    f = get_parameter("f", p)
-    y = cs.vertcat(x, u)
-    expr = 0.5 * (cs.mtimes([y.T, y])) + cs.mtimes([f.T, y])
-    return expr
+def setup_ocp_solver(param, **kwargs):
+    ocp = export_parametric_ocp(param, qp_solver_ric_alg=1, integrator_type="DISCRETE", hessian_approx="EXACT")
 
+    ocp.solver_options.with_value_sens_wrt_params = True
 
-def cost_expr_ext_cost_0(x, u, p):
-    """
-    Define the external cost function expression at stage 0.
-    """
-    return get_parameter("V_0", p) + cost_expr_ext_cost(x, u, p)
+    ocp_solver = AcadosOcpSolver(ocp, **kwargs)
 
+    status = ocp_solver.solve()
 
-def cost_expr_ext_cost_e(x, param, N):
-    """
-    Define the external cost function expression at the terminal stage as the solution of the discrete-time algebraic Riccati
-    equation.
-    """
-
-    return 0.5 * cs.mtimes([x.T, solve_discrete_are(param["A"], param["B"], param["Q"], param["R"]), x])
-
-
-def get_parameter(field, p):
-    if field == "A":
-        return cs.reshape(p[:4], 2, 2)
-    elif field == "B":
-        return cs.reshape(p[4:6], 2, 1)
-    elif field == "b":
-        return cs.reshape(p[6:8], 2, 1)
-    elif field == "V_0":
-        return p[8]
-    elif field == "f":
-        return cs.reshape(p[9:12], 3, 1)
-
-
-def setup_acados_ocp_solver(
-    param: dict,
-    qp_solver: str = "PARTIAL_CONDENSING_HPIPM",
-    hessian_approx: str = "GAUSS_NEWTON",
-    integrator_type: str = "IRK",
-    nlp_solver_type: str = "SQP",
-    name: str = "lti",
-) -> AcadosOcpSolver:
-    ocp = export_parametric_ocp(
-        param=param,
-        qp_solver=qp_solver,
-        hessian_approx=hessian_approx,
-        integrator_type=integrator_type,
-        nlp_solver_type=nlp_solver_type,
-        name=name,
-    )
-
-    ocp_solver = AcadosOcpSolver(ocp)
-
-    # TODO Is this necessary?
-    for stage in range(ocp.dims.N + 1):
-        ocp_solver.set(stage, "p", ocp.parameter_values)
+    if status != 0:
+        raise ValueError(f"Initial solve failed with status {status}")
 
     return ocp_solver
 
 
-def export_parametric_ocp(
-    param: dict,
-    qp_solver_ric_alg: int = 0,
-    qp_solver: str = "PARTIAL_CONDENSING_HPIPM",
-    hessian_approx: str = "GAUSS_NEWTON",
-    integrator_type: str = "IRK",
-    nlp_solver_type: str = "SQP",
-    name: str = "lti",
-) -> AcadosOcp:
-    ocp = AcadosOcp()
+def setup_ocp_sensitivity_solver(param: dict, **kwargs) -> AcadosOcpSolver:
+    ocp = export_parametric_ocp(param, qp_solver_ric_alg=1, integrator_type="DISCRETE", hessian_approx="EXACT")
 
-    ocp.model.name = name
+    ocp.code_export_directory = ocp.code_export_directory + "_sensitivity"
 
-    ocp.model.x = cs.SX.sym("x", 2)
-    ocp.model.u = cs.SX.sym("u", 1)
+    ocp.solver_options.nlp_solver_step_length = 0.0
+    ocp.solver_options.nlp_solver_max_iter = 1
+    ocp.solver_options.qp_solver_iter_max = 200
+    ocp.solver_options.tol = 1e-10
+    ocp.solver_options.qp_solver_ric_alg = 0
+    ocp.solver_options.qp_solver_cond_N = ocp.dims.N
+    ocp.solver_options.with_solution_sens_wrt_params = True
+    ocp.solver_options.with_value_sens_wrt_params = True
 
-    ocp.dims.N = 40
+    ocp_sensitivity_solver = AcadosOcpSolver(ocp, **kwargs)
 
-    A = cs.SX.sym("A", 2, 2)
-    B = cs.SX.sym("B", 2, 1)
-    b = cs.SX.sym("b", 2, 1)
-    V_0 = cs.SX.sym("V_0", 1, 1)
-    f = cs.SX.sym("f", 3, 1)
+    # set_discount_factor(ocp_sensitivity_solver, discount_factor=discount_factor)
 
-    ocp.model.p = cs.vertcat(cs.reshape(A, -1, 1), cs.reshape(B, -1, 1), cs.reshape(b, -1, 1), V_0, cs.reshape(f, -1, 1))
-    ocp.parameter_values = np.concatenate([param[key].T.reshape(-1, 1) for key in ["A", "B", "b", "V_0", "f"]])
-
-    ocp.model.disc_dyn_expr = A @ ocp.model.x + B @ ocp.model.u + b
-
-    ocp.cost.cost_type_0 = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost_0 = cost_expr_ext_cost_0(ocp.model.x, ocp.model.u, ocp.model.p)
-
-    ocp.cost.cost_type = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost = cost_expr_ext_cost(ocp.model.x, ocp.model.u, ocp.model.p)
-
-    ocp.cost.cost_type_e = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost_e = cost_expr_ext_cost_e(ocp.model.x, param, ocp.dims.N)
-
-    ocp.constraints.idxbx_0 = np.array([0, 1])
-    ocp.constraints.lbx_0 = np.array([0.0, 0.0])
-    ocp.constraints.ubx_0 = np.array([1.0, 1.0])
-
-    ocp.constraints.idxbx = np.array([0, 1])
-    ocp.constraints.lbx = np.array([-0.0, -1.0])
-    ocp.constraints.ubx = np.array([+1.0, +1.0])
-
-    ocp.constraints.idxsbx = np.array([0])
-    ocp.cost.zl = np.array([1e2])
-    ocp.cost.zu = np.array([1e2])
-    ocp.cost.Zl = np.diag([0])
-    ocp.cost.Zu = np.diag([0])
-
-    ocp.constraints.idxbu = np.array([0])
-    ocp.constraints.lbu = np.array([-1.0])
-    ocp.constraints.ubu = np.array([+1.0])
-
-    ocp.solver_options.tf = ocp.dims.N
-    ocp.solver_options.integrator_type = "DISCRETE"
-    ocp.solver_options.nlp_solver_type = "SQP"
-    ocp.solver_options.hessian_approx = "EXACT"
-
-    return ocp
+    return ocp_sensitivity_solver
