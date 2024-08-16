@@ -1,7 +1,7 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from acados_template import AcadosOcp, AcadosOcpSolver
-from mpc.common.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
+from rlmpc.mpc.common.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
 from ctypes import POINTER, c_double, c_int, c_void_p, cast
 
 
