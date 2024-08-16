@@ -487,3 +487,4 @@ c_generated_code*/
 .vscode/
 */figures/*
 local/*
+*.json
