@@ -2,7 +2,8 @@ import numpy as np
 from abc import ABC
 from acados_template import AcadosOcp, AcadosOcpSolver
 from rlmpc.mpc.common.nlp import NLP, update_nlp, get_state_labels, get_input_labels, get_parameter_labels
-from rlmpc.mpc.common.acados import set_discount_factor
+
+# from rlmpc.mpc.common.acados import set_discount_factor
 from ctypes import POINTER, c_double, c_int, c_void_p, cast
 
 
@@ -291,28 +292,20 @@ class MPC(ABC):
         """
         Set the discount factor.
 
+        NB: This overwrites the scaling of the cost function (control interval length by default).
+
         Args:
             gamma: Discount factor.
+
         """
 
-        # print(f"Setting discount factor to {discount_factor_}")
+        print(f"Setting discount factor to {discount_factor_}")
 
         self.discount_factor = discount_factor_
 
-        field_ = "scaling"
-
-        field = field_
-        field = field.encode("utf-8")
-
-        # Need to bypass cost_set for scaling
-        for stage_ in range(1, self.ocp_solver.acados_ocp.dims.N + 1):
-            stage = c_int(stage_)
-            value_ = np.array([self.discount_factor]) ** stage_
-            value_data = cast(value_.ctypes.data, POINTER(c_double))
-            value_data_p = cast((value_data), c_void_p)
-            self.ocp_solver.shared_lib.ocp_nlp_cost_model_set(
-                self.ocp_solver.nlp_config, self.ocp_solver.nlp_dims, self.ocp_solver.nlp_in, stage, field, value_data_p
-            )
+        for stage in range(0, self.ocp_solver.acados_ocp.dims.N + 1):
+            self.ocp_solver.cost_set(stage, "scaling", discount_factor_**stage)
+            self.ocp_sensitivity_solver.cost_set(stage, "scaling", discount_factor_**stage)
 
     def get(self, stage, field):
         return self.ocp_solver.get(stage, field)

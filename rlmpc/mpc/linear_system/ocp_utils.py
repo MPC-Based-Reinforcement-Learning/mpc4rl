@@ -3,7 +3,7 @@ import numpy as np
 import casadi as cs
 from scipy.linalg import solve_discrete_are
 from acados_template import AcadosOcp, AcadosOcpSolver
-from rlmpc.mpc.common.acados import set_discount_factor
+# from rlmpc.mpc.common.acados import set_discount_factor
 
 
 def disc_dyn_expr(x, u, param):
@@ -59,7 +59,6 @@ def setup_ocp_solver(
     integrator_type: str = "IRK",
     nlp_solver_type: str = "SQP",
     name: str = "lti",
-    discount_factor: float = 0.99,
     **ocp_solver_kwargs,
 ) -> AcadosOcpSolver:
     ocp = export_parametric_ocp(
@@ -71,15 +70,7 @@ def setup_ocp_solver(
         name=name,
     )
 
-    ocp_solver = AcadosOcpSolver(ocp, **ocp_solver_kwargs)
-
-    # TODO: Is this necessary?
-    for stage in range(ocp.dims.N + 1):
-        ocp_solver.set(stage, "p", ocp.parameter_values)
-
-    set_discount_factor(ocp_solver, discount_factor)
-
-    return ocp_solver
+    return AcadosOcpSolver(ocp, **ocp_solver_kwargs)
 
 
 def setup_ocp_sensitivity_solver(ocp_solver: AcadosOcpSolver, discount_factor: float = 0.99, **kwargs) -> AcadosOcpSolver:
@@ -88,11 +79,7 @@ def setup_ocp_sensitivity_solver(ocp_solver: AcadosOcpSolver, discount_factor: f
     ocp.solver_options.hessian_approx = "EXACT"
     ocp.solver_options.qp_solver_ric_alg = 0
 
-    ocp_sensitivity_solver = AcadosOcpSolver(ocp, **kwargs)
-
-    set_discount_factor(ocp_sensitivity_solver, discount_factor=discount_factor)
-
-    return ocp_sensitivity_solver
+    return AcadosOcpSolver(ocp, **kwargs)
 
 
 def export_parametric_ocp(

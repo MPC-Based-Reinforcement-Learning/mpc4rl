@@ -190,7 +190,7 @@ def export_parametric_model(param: dict) -> AcadosModel:
 
     f_impl = xdot - f_expl
 
-    f_disc = export_discrete_erk4_integrator_step(f_expl=f_expl, x=x, u=u, p=p, h=param["Ts"])
+    f_disc = export_discrete_erk4_integrator_step(f_expl=f_expl, x=x, u=u, p=p, h=param["Tf"] / param["N"])
 
     model = AcadosModel()
 
@@ -203,6 +203,18 @@ def export_parametric_model(param: dict) -> AcadosModel:
     model.p = p
 
     return model
+
+
+def cost_expr_ext_cost_0(x, u, Q_mat, R_mat):
+    return 0.5 * (x.T @ Q_mat @ x + u.T @ R_mat @ u)
+
+
+def cost_expr_ext_cost(x, u, Q_mat, R_mat):
+    return 0.5 * (x.T @ Q_mat @ x + u.T @ R_mat @ u)
+
+
+def cost_expr_ext_cost_e(x, Q_mat):
+    return 0.5 * (x.T @ Q_mat @ x)
 
 
 def export_parametric_ocp(
@@ -222,8 +234,8 @@ def export_parametric_ocp(
 
     integrator_type = "DISCRETE"
 
-    Tf = T_horizon
-    N = N_horizon
+    Tf = param["Tf"]
+    N = param["N"]
 
     model = export_parametric_model(param=param)
 
@@ -283,8 +295,9 @@ def export_parametric_ocp(
         x = ocp.model.x
         u = ocp.model.u
 
-        ocp.model.cost_expr_ext_cost = 0.5 * (x.T @ Q_mat @ x + u.T @ R_mat @ u)
-        ocp.model.cost_expr_ext_cost_e = 0.5 * x.T @ Q_mat @ x
+        ocp.model.cost_expr_ext_cost_0 = cost_expr_ext_cost_0(x, u, Q_mat, R_mat)
+        ocp.model.cost_expr_ext_cost = cost_expr_ext_cost(x, u, Q_mat, R_mat)
+        ocp.model.cost_expr_ext_cost_e = cost_expr_ext_cost_e(x, Q_mat)
 
     # Need to convert from ssymStruct to SX/MX
     ocp.model.p = ocp.model.p.cat

@@ -46,8 +46,11 @@ def build_mpc_params() -> dict[np.ndarray, float]:
         "Q": 2 * np.diag([1e3, 1e3, 1e-2, 1e-2]),  # State cost matrix
         "R": 2 * np.diag([1e-2]),  # Control cost matrix
         "model_name": "pendulum_on_cart",
-        "Ts": 0.1,  # Sampling time
+        "Tf": 1.0,  # Prediction horizon
+        "N": 20,  # Number of control intervals
     }
+
+    # param["Ts"] = param["Tf"] / param["N"]
 
     return param
 

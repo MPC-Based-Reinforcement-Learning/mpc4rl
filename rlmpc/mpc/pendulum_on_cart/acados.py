@@ -17,6 +17,9 @@ class AcadosMPC(MPC):
 
         self.ocp_sensitivity_solver = setup_ocp_sensitivity_solver(param, **ocp_sensitivity_solver_kwargs)
 
+    def set_discount_factor(self, discount_factor_: float) -> None:
+        return super().set_discount_factor(discount_factor_)
+
 
 def setup_acados_ocp_solver(param: dict, **kwargs) -> AcadosOcpSolver:
     ocp = export_parametric_ocp(param=param, qp_solver_ric_alg=1, integrator_type="DISCRETE", hessian_approx="GAUSS_NEWTON")
