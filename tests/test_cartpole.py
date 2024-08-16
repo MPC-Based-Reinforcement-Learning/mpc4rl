@@ -16,7 +16,7 @@ kwargs = {
 }
 
 
-def build_mpc_args(generate_code: bool = False, build_code: bool = False, json_file_prefix: str = "acados_ocp_linear_system"):
+def build_mpc_args(generate_code: bool = False, build_code: bool = False, json_file_prefix: str = "acados_ocp_pole_on_a_cart"):
     kwargs = {
         "ocp_solver": {"json_file": f"{json_file_prefix}.json"},
         "ocp_sensitivity_solver": {"json_file": f"{json_file_prefix}_sensitivity.json"},
@@ -53,7 +53,7 @@ def build_mpc_params() -> dict[np.ndarray, float]:
 
 
 def set_up_mpc(
-    generate_code: bool = False, build_code: bool = False, json_file_prefix: str = "acados_ocp_linear_system"
+    generate_code: bool = False, build_code: bool = False, json_file_prefix: str = "acados_ocp_pendulum_on_a_cart"
 ) -> tuple[AcadosMPC, np.ndarray, np.ndarray, np.ndarray]:
     kwargs = build_mpc_args(generate_code, build_code, json_file_prefix)
     params = build_mpc_params()
@@ -78,11 +78,6 @@ def test_mpc_initializes():
     assert mpc.ocp_solver.acados_ocp.cost is not None
 
 
-def test_get_param_does_not_give_None():
-    # Use the existing ocp solver
-    assert AcadosMPC(param, discount_factor=0.99, **kwargs).get_p() is not None
-
-
 def test_set_p_get_p():
     """
     Test if the set_p and get_p methods work correctly.
@@ -92,7 +87,7 @@ def test_set_p_get_p():
 
     p = mpc.get_p()
 
-    p += np.random.randn(p.shape[0], p.shape[1])
+    p += np.random.randn(p.shape[0])
 
     mpc.set_p(p)
 
@@ -105,7 +100,7 @@ def set_up_test_parameters(mpc: AcadosMPC, np_test: int = 10) -> np.ndarray:
     test_param = np.repeat(parameter_values, np_test).reshape(len(parameter_values), -1)
 
     # Vary parameter along one dimension of p_label
-    p_idx = find_idx_for_labels(mpc.ocp_solver.acados_ocp.model.p, "A_0")[0]
+    p_idx = find_idx_for_labels(mpc.ocp_solver.acados_ocp.model.p, "M")[0]
     test_param[p_idx, :] = np.linspace(0.5 * parameter_values[p_idx], 1.5 * parameter_values[p_idx], np_test).flatten()
 
     return test_param
@@ -114,8 +109,8 @@ def set_up_test_parameters(mpc: AcadosMPC, np_test: int = 10) -> np.ndarray:
 def test_v_update(
     generate_code: bool = False,
     build_code: bool = False,
-    json_file_prefix: str = "acados_ocp_linear_system",
-    np_test: int = 10,
+    json_file_prefix: str = "acados_ocp_pendulum_on_a_cart",
+    np_test: int = 100,
     plot: bool = False,
 ):
     mpc, x0, _, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
@@ -130,8 +125,8 @@ def test_v_update(
 def test_q_update(
     generate_code: bool = False,
     build_code: bool = False,
-    json_file_prefix: str = "acados_ocp_linear_system",
-    np_test: int = 10,
+    json_file_prefix: str = "acados_ocp_pendulum_on_a_cart",
+    np_test: int = 100,
     plot: bool = False,
 ):
     mpc, x0, u0, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
@@ -146,8 +141,8 @@ def test_q_update(
 def test_pi_update(
     generate_code: bool = False,
     build_code: bool = False,
-    json_file_prefix: str = "acados_ocp_linear_system",
-    np_test: int = 10,
+    json_file_prefix: str = "acados_ocp_pendulum_on_a_cart",
+    np_test: int = 100,
     plot: bool = False,
 ):
     mpc, x0, _, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
@@ -169,29 +164,15 @@ def test_cost_scaling():
     pass
 
 
-def test_use_existing_ocp_solver():
-    # Generate and build the ocp solver
-
-    _ = AcadosMPC(
-        param,
-        discount_factor=0.99,
-        **{
-            "ocp_solver": {"json_file": "acados_ocp.json", "generate": True, "build": True},
-            "ocp_sensitivity_solver": {"json_file": "acados_ocp_sensitivity.json", "generate": True, "build": True},
-        },
-    )
-
-    # Use the existing ocp solver
-    _ = AcadosMPC(param, discount_factor=0.99, **kwargs)
-
-    assert True
-
-
 def main():
+    # test_set_p_get_p()
     # test_v_update(plot=True, np_test=100)
     # test_q_update(plot=True, np_test=100)
     # test_pi_update(plot=True, np_test=100)
-    test_mpc_initializes()
+    # test_mpc_initializes()
+    # set_up_mpc(generate_code=True, build_code=True)
+
+    assert True
 
 
 if __name__ == "__main__":
