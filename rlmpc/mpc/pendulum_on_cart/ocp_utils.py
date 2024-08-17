@@ -303,6 +303,11 @@ def export_parametric_ocp(
     ocp.model.p = ocp.model.p.cat
     # set constraints
     # Fmax = 80
+
+    ocp.constraints.lbx_0 = x0
+    ocp.constraints.ubx_0 = x0
+    ocp.constraints.idxbx_0 = np.array([0, 1, 2, 3])
+
     ocp.constraints.lbu = np.array([-Fmax])
     ocp.constraints.ubu = np.array([+Fmax])
     ocp.constraints.x0 = x0

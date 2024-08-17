@@ -1,9 +1,10 @@
 import os
 import numpy as np
 from rlmpc.mpc.pendulum_on_cart.acados import AcadosMPC
+import matplotlib.pyplot as plt
 # from rlmpc.mpc.chain_mass.ocp_utils import find_idx_for_labels
 
-from tests.common import (
+from common import (
     run_test_v_update_for_varying_parameters,
     run_test_q_update_for_varying_parameters,
     run_test_pi_update_for_varying_parameters,
@@ -58,7 +59,7 @@ def build_mpc_params() -> dict[np.ndarray, float]:
 
 def set_up_mpc(
     generate_code: bool = False, build_code: bool = False, json_file_prefix: str = "acados_ocp_pendulum_on_cart"
-) -> tuple[AcadosMPC, np.ndarray, np.ndarray, np.ndarray]:
+) -> AcadosMPC:
     kwargs = build_mpc_args(generate_code, build_code, json_file_prefix)
     params = build_mpc_params()
     mpc = AcadosMPC(param=params, **kwargs)
@@ -167,19 +168,53 @@ def test_pi_update(
     assert np.median(absolute_difference) <= 1e-1
 
 
-def test_get_param_returns_correct_shape():
-    # TODO: Implement this test
-    pass
+def test_closed_loop(
+    generate_code: bool = False,
+    build_code: bool = False,
+    json_file_prefix: str = "acados_ocp_pendulum_on_cart",
+    x0: np.ndarray = np.array([0.0, np.pi, 0.0, 0.0]),
+    n_sim: int = 50,
+    plot: bool = False,
+):
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
+    x = [x0]
+    u = []
 
-def test_cost_scaling():
-    # TODO: Implement this test. Can use a two-dimensional point mass system with a lower 2-norm constraint away from zero.
-    pass
+    mpc.ocp_solver.constraints_set(0, "lbx", x0)
+
+    for _ in range(n_sim):
+        u.append(mpc.ocp_solver.solve_for_x0(x[-1]))
+        x.append(mpc.ocp_solver.get(1, "x"))
+        assert mpc.ocp_solver.get_status() == 0
+
+    x = np.array(x)
+    u = np.array(u)
+
+    if plot:
+        plt.figure()
+        plt.subplot(5, 1, 1)
+        plt.step(np.arange(n_sim + 1), x[:, 0], label="x_0")
+        plt.subplot(5, 1, 2)
+        plt.step(np.arange(n_sim + 1), x[:, 1], label="x_1")
+        plt.subplot(5, 1, 3)
+        plt.step(np.arange(n_sim + 1), x[:, 2], label="x_2")
+        plt.subplot(5, 1, 4)
+        plt.step(np.arange(n_sim + 1), x[:, 3], label="x_3")
+        plt.subplot(5, 1, 5)
+        plt.step(np.arange(n_sim), u, label="u")
+        plt.legend()
+        plt.show()
+
+    for i in range(x.shape[1]):
+        assert np.median(x[-10:, i]) <= 1e-1
+    assert np.median(u[-10:]) <= 1e-1
 
 
 def main():
     # test_set_p_get_p()
-    test_v_update(plot=True, np_test=100, varying_param_label="M")
+    # test_v_update(plot=True, np_test=100, varying_param_label="M")
+    # test_closed_loop(plot=True)
     # test_q_update(plot=True, np_test=100)
     # test_pi_update(plot=True, np_test=100)
     # test_mpc_initializes()
