@@ -9,6 +9,7 @@ from rlmpc.mpc.chain_mass.ocp_utils import (
     find_idx_for_labels,
     define_param_struct_symSX,
     define_x0,
+    define_M,
 )
 from rlmpc.mpc.chain_mass.acados import AcadosMPC
 
@@ -76,7 +77,9 @@ def main_acados(
 
     parameter_values = mpc.ocp_solver.acados_ocp.parameter_values
 
-    M, x0 = define_x0(chain_params_, mpc.ocp_solver.acados_ocp)
+    x0 = define_x0(chain_params_, mpc.ocp_solver.acados_ocp)
+
+    M = define_M(chain_params_)
 
     p_label = f"C_{M}_0"
     # p_label = "Q_0"
@@ -125,7 +128,8 @@ def main_nlp(chain_params_=get_chain_params(), np_test: int = 100, plot: bool = 
 
     mpc = AcadosMPC(chain_params_, discount_factor)
 
-    M, x0 = define_x0(chain_params_, mpc.ocp_solver.acados_ocp)
+    x0 = define_x0(chain_params_, mpc.ocp_solver.acados_ocp)
+    M = define_M(chain_params_)
 
     p_label = f"C_{M}_0"
     p_idx = find_idx_for_labels(

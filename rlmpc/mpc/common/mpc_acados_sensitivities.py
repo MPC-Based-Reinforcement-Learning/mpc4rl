@@ -7,6 +7,11 @@ from rlmpc.mpc.common.nlp import NLP, update_nlp, get_state_labels, get_input_la
 from ctypes import POINTER, c_double, c_int, c_void_p, cast
 
 
+def set_discount_factor(ocp_solver: AcadosOcpSolver, discount_factor: float) -> None:
+    for stage in range(0, ocp_solver.acados_ocp.dims.N + 1):
+        ocp_solver.cost_set(stage, "scaling", discount_factor**stage)
+
+
 class MPC(ABC):
     """
     MPC abstract base class.
@@ -92,6 +97,7 @@ class MPC(ABC):
             for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
                 self.ocp_solver.set(stage, "p", p)
 
+        print(f"x0 = {x0}")
         # Set initial state
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)

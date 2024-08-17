@@ -3,6 +3,7 @@ import numpy as np
 import casadi as cs
 from scipy.linalg import solve_discrete_are
 from acados_template import AcadosOcp, AcadosOcpSolver
+import scipy.linalg as linalg
 # from rlmpc.mpc.common.acados import set_discount_factor
 
 
@@ -84,6 +85,7 @@ def setup_ocp_sensitivity_solver(ocp_solver: AcadosOcpSolver, discount_factor: f
 
 def export_parametric_ocp(
     param: dict,
+    cost_type="EXTERNAL",
     qp_solver_ric_alg: int = 0,
     qp_solver: str = "PARTIAL_CONDENSING_HPIPM",
     hessian_approx: str = "GAUSS_NEWTON",
@@ -99,6 +101,8 @@ def export_parametric_ocp(
     ocp.model.u = cs.SX.sym("u", 1)
 
     ocp.dims.N = 40
+    ocp.dims.nx = 2
+    ocp.dims.nu = 1
 
     A = cs.SX.sym("A", 2, 2)
     B = cs.SX.sym("B", 2, 1)
@@ -111,18 +115,47 @@ def export_parametric_ocp(
     ocp.parameter_values = np.concatenate([param[key].T.reshape(-1, 1) for key in ["A", "B", "b", "V_0", "f"]])
 
     ocp.model.disc_dyn_expr = A @ ocp.model.x + B @ ocp.model.u + b
+    # ocp.model.disc_dyn_expr = param["A"] @ ocp.model.x + param["B"] @ ocp.model.u + param["b"]
 
-    ocp.cost.cost_type_0 = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost_0 = cost_expr_ext_cost_0(ocp.model.x, ocp.model.u, ocp.model.p)
+    # f_disc = cs.Function("f", [ocp.model.x, ocp.model.u], [ocp.model.disc_dyn_expr])
 
-    ocp.cost.cost_type = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost = cost_expr_ext_cost(ocp.model.x, ocp.model.u, ocp.model.p)
+    # print(f_disc(np.array([0.5, 0.5], 0)))
 
-    ocp.cost.cost_type_e = "EXTERNAL"
-    ocp.model.cost_expr_ext_cost_e = cost_expr_ext_cost_e(ocp.model.x, param, ocp.dims.N)
+    if cost_type == "LINEAR_LS":
+        ocp.cost.cost_type = "LINEAR_LS"
+        ocp.cost.Vx_0 = np.zeros((ocp.dims.nx + ocp.dims.nu, ocp.dims.nx))
+        ocp.cost.Vx_0[: ocp.dims.nx, : ocp.dims.nx] = np.identity(ocp.dims.nx)
+        ocp.cost.Vu_0 = np.zeros((ocp.dims.nx + ocp.dims.nu, ocp.dims.nu))
+        ocp.cost.Vu_0[-1, -1] = 1
+
+        ocp.cost.Vx = np.zeros((ocp.dims.nx + ocp.dims.nu, ocp.dims.nx))
+        ocp.cost.Vx[: ocp.dims.nx, : ocp.dims.nx] = np.identity(ocp.dims.nx)
+        ocp.cost.Vu = np.zeros((ocp.dims.nx + ocp.dims.nu, ocp.dims.nu))
+        ocp.cost.Vu[-1, -1] = 1
+        ocp.cost.Vx_e = np.identity(ocp.dims.nx)
+
+        ocp.cost.W_0 = linalg.block_diag(param["Q"], param["R"])
+        ocp.cost.W = linalg.block_diag(param["Q"], param["R"])
+        ocp.cost.W_e = param["Q"]
+
+        ocp.cost.yref_0 = np.zeros(ocp.dims.nx + ocp.dims.nu)
+        ocp.cost.yref = np.zeros(ocp.dims.nx + ocp.dims.nu)
+        ocp.cost.yref_e = np.zeros(ocp.dims.nx)
+
+    # :math:`l(x,u,z) = 0.5 \cdot || V_x \, x + V_u \, u + V_z \, z - y_\\text{ref}||^2_W`,
+
+    elif cost_type == "EXTERNAL":
+        ocp.cost.cost_type_0 = "EXTERNAL"
+        ocp.model.cost_expr_ext_cost_0 = cost_expr_ext_cost_0(ocp.model.x, ocp.model.u, ocp.model.p)
+
+        ocp.cost.cost_type = "EXTERNAL"
+        ocp.model.cost_expr_ext_cost = cost_expr_ext_cost(ocp.model.x, ocp.model.u, ocp.model.p)
+
+        ocp.cost.cost_type_e = "EXTERNAL"
+        ocp.model.cost_expr_ext_cost_e = cost_expr_ext_cost_e(ocp.model.x, param, ocp.dims.N)
 
     ocp.constraints.idxbx_0 = np.array([0, 1])
-    ocp.constraints.lbx_0 = np.array([0.0, 0.0])
+    ocp.constraints.lbx_0 = np.array([-1.0, -1.0])
     ocp.constraints.ubx_0 = np.array([1.0, 1.0])
 
     ocp.constraints.idxbx = np.array([0, 1])

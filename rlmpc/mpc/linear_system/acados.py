@@ -1,4 +1,5 @@
-from acados_template import AcadosOcpSolver
+import numpy as np
+from acados_template import AcadosOcpSolver, AcadosSimSolver, AcadosSim
 from .ocp_utils import export_parametric_ocp
 
 
@@ -21,22 +22,19 @@ class AcadosMPC(MPC):
         self.ocp_solver = setup_ocp_solver(param, **ocp_solver_kwargs)
         self.ocp_sensitivity_solver = setup_ocp_sensitivity_solver(param, **ocp_sensitivity_solver_kwargs)
 
-        # self.ocp_sensitivity_solver = setup_ocp_sensitivity_solver(
-        #     self.ocp_solver, discount_factor=discount_factor, **ocp_sensitivity_solver_kwargs
-        # )
-
 
 def setup_ocp_solver(param, **kwargs):
-    ocp = export_parametric_ocp(param, qp_solver_ric_alg=1, integrator_type="DISCRETE", hessian_approx="EXACT")
+    ocp = export_parametric_ocp(
+        param, qp_solver_ric_alg=1, integrator_type="DISCRETE", hessian_approx="EXACT", cost_type="EXTERNAL"
+    )
 
     ocp.solver_options.with_value_sens_wrt_params = True
 
     ocp_solver = AcadosOcpSolver(ocp, **kwargs)
 
-    status = ocp_solver.solve()
-
-    if status != 0:
-        raise ValueError(f"Initial solve failed with status {status}")
+    # Set nominal parameters. Could be done at AcadosOcpSolver initialization?
+    for stage in range(ocp_solver.acados_ocp.dims.N + 1):
+        ocp_solver.set(stage, "p", ocp_solver.acados_ocp.parameter_values)
 
     return ocp_solver
 
@@ -57,6 +55,7 @@ def setup_ocp_sensitivity_solver(param: dict, **kwargs) -> AcadosOcpSolver:
 
     ocp_sensitivity_solver = AcadosOcpSolver(ocp, **kwargs)
 
-    # set_discount_factor(ocp_sensitivity_solver, discount_factor=discount_factor)
+    for stage in range(ocp_sensitivity_solver.acados_ocp.dims.N + 1):
+        ocp_sensitivity_solver.set(stage, "p", ocp_sensitivity_solver.acados_ocp.parameter_values)
 
     return ocp_sensitivity_solver

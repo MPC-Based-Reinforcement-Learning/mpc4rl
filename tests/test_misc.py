@@ -1,6 +1,6 @@
 import numpy as np
 from rlmpc.mpc.pendulum_on_cart.acados import AcadosMPC
-from test_pendulum_on_cart import build_mpc_params, build_mpc_args
+from tests.test_pendulum_on_cart import build_mpc_params, build_mpc_args
 from rlmpc.mpc.pendulum_on_cart.ocp_utils import cost_expr_ext_cost_0, cost_expr_ext_cost, cost_expr_ext_cost_e
 
 

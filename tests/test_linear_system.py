@@ -1,20 +1,25 @@
 import os
 import numpy as np
 from rlmpc.mpc.linear_system.acados import AcadosMPC
-from rlmpc.mpc.chain_mass.ocp_utils import find_idx_for_labels
 
-from test_chain_mass import (
+
+from tests.common import (
     run_test_v_update_for_varying_parameters,
     run_test_q_update_for_varying_parameters,
     run_test_pi_update_for_varying_parameters,
+    set_up_test_parameters,
 )
+
+
+# from common import set_up_test_parameters
 
 
 param = {
     "A": np.array([[1.0, 0.25], [0.0, 1.0]]),
+    # "B": np.array([[0.03125], [0.25]]),
     "B": np.array([[0.03125], [0.25]]),
     "Q": np.identity(2),
-    "R": np.identity(1),
+    "R": 1e-2 * np.identity(1),
     "b": np.array([[0.0], [0.0]]),
     "f": np.array([[0.0], [0.0], [0.0]]),
     "V_0": np.array([1e-3]),
@@ -48,38 +53,51 @@ def build_mpc_params() -> dict[np.ndarray]:
     Define discrete double integrator matrices.
     """
 
-    A = np.array([[1.0, 0.25], [0.0, 1.0]])
-    B = np.array([[0.0], [0.25]])
-    b = np.array([[0.0], [0.0]])
+    # A = np.array([[1.0, 0.25], [0.0, 1.0]])
+    # B = np.array([[0.0], [0.25]])
+    # b = np.array([[0.0], [0.0]])
 
-    Q = np.identity(2)
-    R = np.identity(1)
+    # Q = np.identity(2)
+    # R = np.identity(1)
 
-    f = np.array([[0.0], [0.0], [0.0]])
+    # f = np.array([[0.0], [0.0], [0.0]])
 
-    V_0 = np.array([0])
+    # V_0 = np.array([0])
 
-    return {"A": A, "B": B, "Q": Q, "R": R, "b": b, "f": f, "V_0": V_0}
+    # return {"A": A, "B": B, "Q": Q, "R": R, "b": b, "f": f, "V_0": V_0}
+
+    param = {
+        "A": np.array([[1.0, 0.25], [0.0, 1.0]]),
+        # "B": np.array([[0.03125], [0.25]]),
+        "B": np.array([[0.03125], [0.25]]),
+        "Q": np.identity(2),
+        "R": np.identity(1),
+        "b": np.array([[0.0], [0.0]]),
+        "f": np.array([[0.0], [0.0], [0.0]]),
+        "V_0": np.array([1e-3]),
+    }
+
+    return param
 
 
 def set_up_mpc(
     generate_code: bool = False, build_code: bool = False, json_file_prefix: str = "acados_ocp_linear_system"
-) -> tuple[AcadosMPC, np.ndarray, np.ndarray, np.ndarray]:
+) -> AcadosMPC:
     kwargs = build_mpc_args(generate_code, build_code, json_file_prefix)
     params = build_mpc_params()
     mpc = AcadosMPC(param=params, **kwargs)
-    mpc.ocp_solver.solve()
 
-    x0 = mpc.ocp_solver.get(0, "x")
-    u0 = mpc.ocp_solver.get(0, "u")
-    p0 = mpc.ocp_solver.acados_ocp.parameter_values
+    # mpc.ocp_solver.solve()
+    # x0 = mpc.ocp_solver.get(0, "x")
+    # u0 = mpc.ocp_solver.get(0, "u")
+    # p0 = mpc.ocp_solver.acados_ocp.parameter_values
 
-    return mpc, x0, u0, p0
+    return mpc
 
 
 def test_mpc_initializes():
     # mpc = AcadosMPC(param, discount_factor=0.99, **kwargs)
-    mpc, _, _, _ = set_up_mpc()
+    mpc = set_up_mpc()
     assert mpc is not None
     assert mpc.ocp_solver is not None
     assert mpc.ocp_solver.acados_ocp is not None
@@ -98,7 +116,7 @@ def test_set_p_get_p():
     Test if the set_p and get_p methods work correctly.
     """
 
-    mpc, _, _, _ = set_up_mpc()
+    mpc = set_up_mpc()
 
     p = mpc.get_p()
 
@@ -109,28 +127,20 @@ def test_set_p_get_p():
     assert np.allclose(mpc.get_p(), p)
 
 
-def set_up_test_parameters(mpc: AcadosMPC, np_test: int = 10) -> np.ndarray:
-    parameter_values = mpc.ocp_solver.acados_ocp.parameter_values
-
-    test_param = np.repeat(parameter_values, np_test).reshape(len(parameter_values), -1)
-
-    # Vary parameter along one dimension of p_label
-    p_idx = find_idx_for_labels(mpc.ocp_solver.acados_ocp.model.p, "A_0")[0]
-    test_param[p_idx, :] = np.linspace(0.5 * parameter_values[p_idx], 1.5 * parameter_values[p_idx], np_test).flatten()
-
-    return test_param
-
-
 def test_v_update(
     generate_code: bool = False,
     build_code: bool = False,
     json_file_prefix: str = "acados_ocp_linear_system",
+    x0: np.ndarray = np.array([0.1, 0.1]),
+    varying_param_label: str = "A_0",
     np_test: int = 10,
     plot: bool = False,
 ):
-    mpc, x0, _, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
-    test_param = set_up_test_parameters(mpc, np_test)
+    mpc.ocp_solver.solve()
+
+    test_param = set_up_test_parameters(mpc, np_test, varying_param_label=varying_param_label)
 
     absolute_difference = run_test_v_update_for_varying_parameters(mpc, x0, test_param, plot)
 
@@ -141,12 +151,21 @@ def test_q_update(
     generate_code: bool = False,
     build_code: bool = False,
     json_file_prefix: str = "acados_ocp_linear_system",
+    x0: np.ndarray = np.array([0.1, 0.1]),
+    u0: np.ndarray = np.array([0.0]),
+    varying_param_label: str = "A_0",
     np_test: int = 10,
     plot: bool = False,
 ):
-    mpc, x0, u0, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
-    test_param = set_up_test_parameters(mpc, np_test)
+    u0 = mpc.ocp_solver.solve_for_x0(x0)
+
+    # mpc.ocp_solver.solve()
+    # x0 = mpc.ocp_solver.get(0, "x")
+    # u0 = mpc.ocp_solver.get(0, "u")
+
+    test_param = set_up_test_parameters(mpc, np_test, varying_param_label=varying_param_label)
 
     absolute_difference = run_test_q_update_for_varying_parameters(mpc, x0, u0, test_param, plot)
 
@@ -157,12 +176,18 @@ def test_pi_update(
     generate_code: bool = False,
     build_code: bool = False,
     json_file_prefix: str = "acados_ocp_linear_system",
+    x0: np.ndarray = np.array([0.1, 0.1]),
+    varying_param_label: str = "A_0",
     np_test: int = 10,
     plot: bool = False,
 ):
-    mpc, x0, _, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
+    # x0 = np.array([1.0, 1.0])
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
-    test_param = set_up_test_parameters(mpc, np_test)
+    # mpc.ocp_solver.solve()
+    # x0 = mpc.ocp_solver.get(0, "x")
+
+    test_param = set_up_test_parameters(mpc, np_test, varying_param_label=varying_param_label)
 
     absolute_difference = run_test_pi_update_for_varying_parameters(mpc, x0, test_param, plot)
 
@@ -198,9 +223,15 @@ def test_use_existing_ocp_solver():
 
 
 def main():
-    # test_v_update(plot=True, np_test=100)
-    # test_q_update(plot=True, np_test=100)
-    test_pi_update(plot=True, np_test=100)
+    test_v_update(plot=True, np_test=100, varying_param_label="A_2")
+    # test_q_update(plot=True, np_test=100, varying_param_label="A_3")
+    # test_pi_update(plot=True, np_test=100)
+    # mpc = set_up_mpc()
+
+    # u0 = mpc.ocp_solver.solve_for_x0(np.array([1.0, 1.0]))
+
+    # print(u0)
+    # print(mpc.ocp_solver.get_cost())
 
 
 if __name__ == "__main__":

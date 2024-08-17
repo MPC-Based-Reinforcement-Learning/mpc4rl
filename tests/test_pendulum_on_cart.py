@@ -1,12 +1,13 @@
 import os
 import numpy as np
 from rlmpc.mpc.pendulum_on_cart.acados import AcadosMPC
-from rlmpc.mpc.chain_mass.ocp_utils import find_idx_for_labels
+# from rlmpc.mpc.chain_mass.ocp_utils import find_idx_for_labels
 
-from test_chain_mass import (
+from tests.common import (
     run_test_v_update_for_varying_parameters,
     run_test_q_update_for_varying_parameters,
     run_test_pi_update_for_varying_parameters,
+    set_up_test_parameters,
 )
 
 
@@ -61,18 +62,19 @@ def set_up_mpc(
     kwargs = build_mpc_args(generate_code, build_code, json_file_prefix)
     params = build_mpc_params()
     mpc = AcadosMPC(param=params, **kwargs)
-    mpc.ocp_solver.solve()
 
-    x0 = mpc.ocp_solver.get(0, "x")
-    u0 = mpc.ocp_solver.get(0, "u")
-    p0 = mpc.ocp_solver.acados_ocp.parameter_values
+    # mpc.ocp_solver.solve()
 
-    return mpc, x0, u0, p0
+    # x0 = mpc.ocp_solver.get(0, "x")
+    # u0 = mpc.ocp_solver.get(0, "u")
+    # p0 = mpc.ocp_solver.acados_ocp.parameter_values
+
+    return mpc
 
 
 def test_mpc_initializes():
     # mpc = AcadosMPC(param, discount_factor=0.99, **kwargs)
-    mpc, _, _, _ = set_up_mpc()
+    mpc = set_up_mpc()
     assert mpc is not None
     assert mpc.ocp_solver is not None
     assert mpc.ocp_solver.acados_ocp is not None
@@ -86,7 +88,7 @@ def test_set_p_get_p():
     Test if the set_p and get_p methods work correctly.
     """
 
-    mpc, _, _, _ = set_up_mpc()
+    mpc = set_up_mpc()
 
     p = mpc.get_p()
 
@@ -97,28 +99,30 @@ def test_set_p_get_p():
     assert np.allclose(mpc.get_p(), p)
 
 
-def set_up_test_parameters(mpc: AcadosMPC, np_test: int = 10) -> np.ndarray:
-    parameter_values = mpc.ocp_solver.acados_ocp.parameter_values
+# def set_up_test_parameters(mpc: AcadosMPC, np_test: int = 10) -> np.ndarray:
+#     parameter_values = mpc.ocp_solver.acados_ocp.parameter_values
 
-    test_param = np.repeat(parameter_values, np_test).reshape(len(parameter_values), -1)
+#     test_param = np.repeat(parameter_values, np_test).reshape(len(parameter_values), -1)
 
-    # Vary parameter along one dimension of p_label
-    p_idx = find_idx_for_labels(mpc.ocp_solver.acados_ocp.model.p, "M")[0]
-    test_param[p_idx, :] = np.linspace(0.5 * parameter_values[p_idx], 1.5 * parameter_values[p_idx], np_test).flatten()
+#     # Vary parameter along one dimension of p_label
+#     p_idx = find_idx_for_labels(mpc.ocp_solver.acados_ocp.model.p, "M")[0]
+#     test_param[p_idx, :] = np.linspace(0.5 * parameter_values[p_idx], 1.5 * parameter_values[p_idx], np_test).flatten()
 
-    return test_param
+#     return test_param
 
 
 def test_v_update(
     generate_code: bool = False,
     build_code: bool = False,
     json_file_prefix: str = "acados_ocp_pendulum_on_cart",
+    varying_param_label="M",
+    x0=np.array([0.0, np.pi, 0.0, 0.0]),
     np_test: int = 100,
     plot: bool = False,
 ):
-    mpc, x0, _, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
-    test_param = set_up_test_parameters(mpc, np_test)
+    test_param = set_up_test_parameters(mpc, np_test, varying_param_label=varying_param_label)
 
     absolute_difference = run_test_v_update_for_varying_parameters(mpc, x0, test_param, plot)
 
@@ -129,12 +133,15 @@ def test_q_update(
     generate_code: bool = False,
     build_code: bool = False,
     json_file_prefix: str = "acados_ocp_pendulum_on_cart",
+    varying_param_label="M",
+    x0=np.array([0.0, np.pi, 0.0, 0.0]),
+    u0=0.0,
     np_test: int = 100,
     plot: bool = False,
 ):
-    mpc, x0, u0, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
-    test_param = set_up_test_parameters(mpc, np_test)
+    test_param = set_up_test_parameters(mpc, np_test, varying_param_label=varying_param_label)
 
     absolute_difference = run_test_q_update_for_varying_parameters(mpc, x0, u0, test_param, plot)
 
@@ -145,12 +152,15 @@ def test_pi_update(
     generate_code: bool = False,
     build_code: bool = False,
     json_file_prefix: str = "acados_ocp_pendulum_on_cart",
+    varying_param_label="M",
+    x0=np.array([0.0, np.pi, 0.0, 0.0]),
     np_test: int = 100,
     plot: bool = False,
 ):
-    mpc, x0, _, _ = set_up_mpc(generate_code, build_code, json_file_prefix)
+    mpc = set_up_mpc(generate_code, build_code, json_file_prefix)
 
-    test_param = set_up_test_parameters(mpc, np_test)
+    # test_param = set_up_test_parameters(mpc, np_test)
+    test_param = set_up_test_parameters(mpc, np_test, varying_param_label=varying_param_label)
 
     absolute_difference = run_test_pi_update_for_varying_parameters(mpc, x0, test_param, plot)
 
@@ -169,11 +179,11 @@ def test_cost_scaling():
 
 def main():
     # test_set_p_get_p()
-    # test_v_update(plot=True, np_test=100)
+    test_v_update(plot=True, np_test=100, varying_param_label="M")
     # test_q_update(plot=True, np_test=100)
     # test_pi_update(plot=True, np_test=100)
     # test_mpc_initializes()
-    # set_up_mpc(generate_code=True, build_code=True)
+    # set_up_mpc(generate_code=False, build_code=False)
 
     assert True
 

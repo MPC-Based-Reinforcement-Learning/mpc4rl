@@ -41,22 +41,26 @@ from rlmpc.mpc.common.ocp_utils import export_discrete_erk4_integrator_step
 # from export_chain_mass_model import export_chain_mass_model
 
 
+def define_M(chain_params_: dict):
+    return chain_params_["n_mass"] - 2  # number of intermediate massesu
+
+
 def define_x0(chain_params_: dict, ocp: AcadosOcp):
-    M = chain_params_["n_mass"] - 2
+    M = define_M(chain_params_)
 
     xEndRef = np.zeros((3, 1))
     xEndRef[0] = chain_params_["L"] * (M + 1) * 6
     pos0_x = np.linspace(chain_params_["xPosFirstMass"][0], xEndRef[0], M + 2)
     x0 = np.zeros((ocp.dims.nx, 1))
     x0[: 3 * (M + 1) : 3] = np.reshape(pos0_x[1:], ((M + 1, 1)))
-    return M, x0
+    return x0
 
 
 def export_chain_mass_model(n_mass: int, Ts: float = 0.2, disturbance: bool = False) -> AcadosModel:
     """Export chain mass model for acados."""
     x0 = np.array([0, 0, 0])  # fix mass (at wall)
 
-    M = n_mass - 2  # number of intermediate massesu
+    M = n_mass - 2
 
     nx, nu = define_nx_nu(n_mass)
 
