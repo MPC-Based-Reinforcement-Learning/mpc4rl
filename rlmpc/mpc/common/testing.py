@@ -12,7 +12,6 @@ def set_up_test_parameters(
     test_param = np.repeat(parameter_values, np_test).reshape(len(parameter_values), -1)
 
     # Vary parameter along one dimension of p_label
-    print(mpc.ocp_solver.acados_ocp.model.p)
     p_idx = find_idx_for_labels(mpc.ocp_solver.acados_ocp.model.p, varying_param_label)[0]
     test_param[p_idx, :] = np.linspace(
         scale_low * parameter_values[p_idx], scale_high * parameter_values[p_idx], np_test
@@ -50,14 +49,19 @@ def compare_acados_value_gradients_to_finite_differences(test_param, values, val
         plt.subplot(4, 1, 1)
         plt.plot(values, label="original values")
         plt.plot(reconstructed_values, label="reconstructed values")
+        plt.grid()
+        plt.legend()
         plt.subplot(4, 1, 2)
         plt.plot(value_gradient_finite_differences, label="value gradient via finite differences")
         plt.plot(value_gradient_acados[:, parameter_index], label="value gradient via acados")
+        plt.grid()
+        plt.legend()
         plt.subplot(4, 1, 3)
         plt.plot(absolute_difference, label="absolute difference")
+        plt.grid()
         plt.subplot(4, 1, 4)
         plt.plot(relative_difference, label="relative difference")
-        plt.legend()
+        plt.grid()
         plt.show()
 
     return absolute_difference
@@ -66,7 +70,7 @@ def compare_acados_value_gradients_to_finite_differences(test_param, values, val
 def run_test_v_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, plot: bool = False):
     np_test = test_param.shape[1]
 
-    parameter_index, _ = find_param_index_and_increment(test_param)
+    # parameter_index, _ = find_param_index_and_increment(test_param)
 
     # Evaluate value and value_gradient using acados
     value = []
@@ -84,7 +88,9 @@ def run_test_v_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, plo
     return absolute_difference
 
 
-def run_test_q_update_for_varying_parameters(mpc: AcadosMPC, x0, u0, test_param, plot: bool = False):
+def run_test_q_update_for_varying_parameters(
+    mpc: AcadosMPC, x0: np.ndarray, u0: np.ndarray, test_param: np.ndarray, plot: bool = False
+):
     # Evaluate q and dqdp using acados
     value = []
     value_gradient = []
@@ -141,21 +147,25 @@ def run_test_pi_update_for_varying_parameters(mpc: AcadosMPC, x0, test_param, pl
             fig, ax = plt.subplots(4, mpc.ocp_solver.acados_ocp.dims.nu, figsize=(10, 20))
             for i in range(mpc.ocp_solver.acados_ocp.dims.nu):
                 ax[0].plot(policy, label="policy")
-                ax[0].plot(reconstructed_policy, label="reconstructed policy")
+                ax[0].plot(reconstructed_policy, label="reconstructed policy from policy gradients")
+                ax[0].set_ylabel("policy")
+                ax[0].legend()
                 ax[1].plot(policy_gradient_acados, label="policy gradient via acados")
                 ax[1].plot(policy_gradient_finite_differences, label="policy gradient via finite differences")
+                ax[1].set_ylabel("policy gradient")
+                ax[1].legend()
                 ax[2].plot(absolute_difference, label="absolute difference")
+                ax[2].set_ylabel("absolute difference")
                 ax[3].plot(relative_difference, label="relative difference")
+                ax[3].set_ylabel("relative difference")
                 for j in range(4):
-                    ax[j].legend()
                     ax[j].grid()
-            plt.legend()
             plt.show()
         else:
             fig, ax = plt.subplots(4, mpc.ocp_solver.acados_ocp.dims.nu, figsize=(10, 20))
             for i in range(mpc.ocp_solver.acados_ocp.dims.nu):
                 ax[0, i].plot(policy[:, i], label="policy")
-                ax[0, i].plot(reconstructed_policy[:, i], label="reconstructed policy")
+                ax[0, i].plot(reconstructed_policy[:, i], label="reconstructed policy from policy gradients")
                 ax[1, i].plot(policy_gradient_acados[:, i], label="policy gradient via acados")
                 ax[1, i].plot(policy_gradient_finite_differences[:, i], label="policy gradient via finite differences")
                 ax[2, i].plot(absolute_difference[:, i], label="absolute difference")

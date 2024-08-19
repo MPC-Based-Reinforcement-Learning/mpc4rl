@@ -97,7 +97,6 @@ class MPC(ABC):
             for stage in range(self.ocp_solver.acados_ocp.dims.N + 1):
                 self.ocp_solver.set(stage, "p", p)
 
-        print(f"x0 = {x0}")
         # Set initial state
         self.ocp_solver.set(0, "lbx", x0)
         self.ocp_solver.set(0, "ubx", x0)
@@ -430,11 +429,13 @@ class MPC(ABC):
 
         return dpi_dp
 
-    def get_dpi_dp(self, finite_differences: bool = False, idx: int = 0) -> np.ndarray:
+    def get_dpi_dp(self, filename="iterate.json") -> np.ndarray:
         """
         Get the value of the sensitivity of the policy with respect to the parameters.
 
         Assumes OCP is solved for state and parameters.
         """
+
+        self.ocp_solver.store_iterate(filename=filename, overwrite=True, verbose=False)
 
         # TODO: Implement this using ocp_sensitivity_solver

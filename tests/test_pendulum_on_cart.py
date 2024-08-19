@@ -2,9 +2,8 @@ import os
 import numpy as np
 from rlmpc.mpc.pendulum_on_cart.acados import AcadosMPC
 import matplotlib.pyplot as plt
-# from rlmpc.mpc.chain_mass.ocp_utils import find_idx_for_labels
 
-from common import (
+from rlmpc.mpc.common.testing import (
     run_test_v_update_for_varying_parameters,
     run_test_q_update_for_varying_parameters,
     run_test_pi_update_for_varying_parameters,
@@ -216,7 +215,7 @@ def main():
     # test_v_update(plot=True, np_test=100, varying_param_label="M")
     # test_closed_loop(plot=True)
     # test_q_update(plot=True, np_test=100)
-    # test_pi_update(plot=True, np_test=100)
+    test_pi_update(plot=True, np_test=100)
     # test_mpc_initializes()
     # set_up_mpc(generate_code=False, build_code=False)
 

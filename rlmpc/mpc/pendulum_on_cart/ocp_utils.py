@@ -224,6 +224,7 @@ def export_parametric_ocp(
     T_horizon=1.0,
     Fmax=80.0,
     qp_solver_ric_alg: int = 1,
+    cost_version="EXTERNAL",
     qp_solver: str = "PARTIAL_CONDENSING_HPIPM",
     hessian_approx: str = "GAUSS_NEWTON",
     integrator_type: str = "IRK",
@@ -268,7 +269,6 @@ def export_parametric_ocp(
     ocp.dims.N = N
 
     # set cost
-    cost_version = "EXTERNAL"
     if cost_version == "LS":
         Q_mat = 2 * np.diag([1e3, 1e3, 1e-2, 1e-2])
         R_mat = 2 * np.diag([1e-2])
@@ -287,6 +287,7 @@ def export_parametric_ocp(
         ocp.cost.yref = np.zeros((ny,))
         ocp.cost.yref_e = np.zeros((ny_e,))
     elif cost_version == "EXTERNAL":
+        ocp.cost.cost_type_0 = "EXTERNAL"
         ocp.cost.cost_type = "EXTERNAL"
         ocp.cost.cost_type_e = "EXTERNAL"
 

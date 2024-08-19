@@ -6,7 +6,7 @@ from .ocp_utils import export_parametric_ocp
 class AcadosMPC(MPC):
     """docstring for MPC."""
 
-    def __init__(self, param, discount_factor=0.99, **kwargs):
+    def __init__(self, param, discount_factor: float = None, **kwargs):
         super(AcadosMPC, self).__init__()
 
         ocp_solver_kwargs = kwargs["ocp_solver"] if "ocp_solver" in kwargs else {}
@@ -16,6 +16,9 @@ class AcadosMPC(MPC):
         ocp_sensitivity_solver_kwargs = kwargs["ocp_sensitivity_solver"] if "ocp_sensitivity_solver" in kwargs else {}
 
         self.ocp_sensitivity_solver = setup_ocp_sensitivity_solver(param, **ocp_sensitivity_solver_kwargs)
+
+        if discount_factor is not None:
+            self.set_discount_factor(discount_factor)
 
     def set_discount_factor(self, discount_factor_: float) -> None:
         return super().set_discount_factor(discount_factor_)

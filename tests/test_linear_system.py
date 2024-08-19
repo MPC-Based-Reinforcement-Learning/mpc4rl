@@ -3,12 +3,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 from rlmpc.mpc.linear_system.acados import AcadosMPC
 
-from common import (
-    run_test_v_update_for_varying_parameters,
-    run_test_q_update_for_varying_parameters,
+from rlmpc.mpc.common.testing import (
     run_test_pi_update_for_varying_parameters,
+    run_test_q_update_for_varying_parameters,
+    run_test_v_update_for_varying_parameters,
     set_up_test_parameters,
 )
+
+# from common import (
+#     run_test_v_update_for_varying_parameters,
+#     run_test_q_update_for_varying_parameters,
+#     run_test_pi_update_for_varying_parameters,
+#     set_up_test_parameters,
+# )
 
 
 # from common import set_up_test_parameters

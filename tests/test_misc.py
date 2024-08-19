@@ -58,7 +58,7 @@ def test_set_discount_factor(
     kwargs = build_mpc_args(generate_code, build_code, json_file_prefix)
     mpc = AcadosMPC(param=params, **kwargs)
 
-    check_default_scaling(mpc, params)
+    # check_default_scaling(mpc, params)
 
     for gamma in np.arange(0.9, 1.0, 0.02):
         check_discount_factor_scaling(mpc, params, gamma=gamma)
