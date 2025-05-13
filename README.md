@@ -1,3 +1,13 @@
+# Note on Maintenance Status
+
+This repository resulted from an initial project exploring the combination of Model Predictive Control (MPC) and Reinforcement Learning (RL). It is no longer actively maintained.
+
+For recent developments and software implementations combining MPC and RL, please visit:
+- [leap-c](https://github.com/leap-c/leap-c) - A newer project enabled by
+- [differentiable acados](https://github.com/FreyJo/differentiable_nmpc) - The underlying differentiable NMPC framework (ocp solver)
+
+
+
 # rlmpc
 
 Reinforcement Learning with Model Predictive Control as function approximator.
